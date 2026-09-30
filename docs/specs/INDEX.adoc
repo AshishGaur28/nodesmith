@@ -8,6 +8,8 @@
 
 == 1. Summary
 
+NOTE: Nothing is shipped. Nodesmith has no release, generates no code yet, and has never been run against ROS 2. These documents describe what is intended; only the front end (`nodesmith validate`, `nodesmith lower`) exists. See the repository `README.md`.
+
 The framework turns a declarative node manifest (TOML, YAML or JSON) into a ROS 2 node in C++ (`rclcpp`) or Python (`rclpy`), targeting ROS 2 Jazzy. Rust is deferred to a later release. The manifest is parsed, lowered into a language-neutral IR, checked, and rendered by per-target generators. Optional feature blocks add lifecycle management, zero-copy transport, security, tracing, real-time scheduling and simulation.
 
 *Scope:* this is a software framework for designing a ROS 2 system entirely from configuration. Hardware is a non-goal: there are no device drivers, accelerator (GPU/FPGA) offload, fieldbus or sensor I/O, and no hardware-in-the-loop support. Robots' hardware is reached only through the ROS 2 interfaces (topics, services) other packages provide. Operating-system real-time settings (`SPEC-10`) are in scope; they configure the process, not devices.

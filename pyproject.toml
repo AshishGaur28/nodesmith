@@ -5,7 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nodesmith"
 version = "0.1.0"
-description = "Config-driven ROS 2 node generator"
+description = "Config-driven ROS 2 node generator (pre-alpha: front end only, no code generation yet)"
+classifiers = ["Development Status :: 2 - Pre-Alpha"]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"

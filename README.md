@@ -1,8 +1,32 @@
 # Nodesmith
 
-Turns a declarative node manifest (TOML, YAML or JSON) into a ROS 2 node in C++ or Python source package (ROS 2 Jazzy). The specs stop at generation. `conformance/` holds the test corpus for the front end (`python conformance/verify.py`). Purely software and configuration driven: no hardware drivers, accelerators or hardware-in-the-loop.
+> [!WARNING]
+> **Nothing is shipped.** Nodesmith is an early work in progress and has no release.
+>
+> - **It does not generate any code yet.** `nodesmith generate` is not implemented, so you cannot turn a manifest into a ROS 2 package today.
+> - **It has never been run against ROS 2.** Nothing has been compiled or tested with a real ROS 2 Jazzy installation.
+> - **Not published.** There is no PyPI package, no release and no version you can depend on. Do not use it in a project.
+> - **Everything can still change.** The specs are drafts (only the manifest format is frozen, and only for this unreleased project).
 
-**Status: front end built, generators not yet.** The suite in [`docs/specs/`](docs/specs/INDEX.adoc) is the source of truth. `nodesmith validate` and `nodesmith lower` work and pass the conformance corpus; `generate`, `bench` and `clean` are not implemented, and `templates/` is empty scaffolding.
+What works today is the front end only: `nodesmith validate` and `nodesmith lower` check a manifest and turn it into a language-neutral intermediate representation (IR). That is a building block for the generators, not something you can use to build a robot node.
+
+## What it is meant to become
+
+Nodesmith turns a declarative node manifest (TOML, YAML or JSON) into a ROS 2 (Jazzy) node in C++ or Python source package. The specs stop at generation. Purely software and configuration driven: no hardware drivers, accelerators or hardware-in-the-loop.
+
+## Status
+
+| Part | State |
+|---|---|
+| Specifications ([`docs/specs/`](docs/specs/INDEX.adoc)) | Drafts. `SPEC-00`, `01` and `02` (manifest, IR, expression language) are frozen for this unreleased project; the rest can change. |
+| Front end (`nodesmith validate`, `nodesmith lower`) | Works. Passes the conformance corpus. |
+| C++ and Python generators (`nodesmith generate`) | Not started. `templates/` is empty. |
+| `nodesmith bench`, `nodesmith clean` | Not implemented. |
+| Python support for extension blocks | Planned right after v1. v1 supports the core blocks only. |
+| Anything ROS-specific (build, run, real-time, shared memory, security) | Specified, never verified against ROS 2 Jazzy. |
+| `frontend/` | Empty scaffolding for a possible visual builder. No spec covers it. |
+
+## Try the front end
 
 ```bash
 pip install -e '.[dev]'
@@ -11,12 +35,16 @@ nodesmith lower --manifest examples/02_filter_pipeline.toml --output build/imu.i
 pytest                                  # product front end vs. the corpus
 python conformance/verify.py            # the corpus vs. the independent reference
 python tools/check_specs.py             # specs and schemas agree
-``` `frontend/` is empty scaffolding for a possible visual builder and is not covered by any spec.
+```
+
+## Where to look
 
 - Start with the [spec index](docs/specs/INDEX.adoc) (reading order, what is normative, known gaps).
 - Normative schemas: [`schemas/node_manifest.schema.json`](schemas/node_manifest.schema.json), [`schemas/node_ir.schema.json`](schemas/node_ir.schema.json).
 - Example manifests: [`examples/`](examples/) (all validate against the schema).
-- Tested reference material: [`docs/specs/reference/`](docs/specs/reference/) (concurrency primitives in C++).
+- Conformance corpus: [`conformance/`](conformance/README.md).
+- Plan and milestones: [`docs/PLAN.adoc`](docs/PLAN.adoc).
+- Reference material: [`docs/specs/reference/`](docs/specs/reference/) (concurrency primitives in C++, tested under ThreadSanitizer).
 
 ## License
 
