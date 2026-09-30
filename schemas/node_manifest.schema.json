@@ -1,0 +1,1217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nodesmith:schema:node_manifest",
+  "title": "Nodesmith Node Manifest Schema",
+  "description": "Normative manifest schema (SPEC-01). Extension blocks are owned by SPEC-05/06/08/09/10/11/12; cross-block rules that JSON Schema cannot express are in SPEC-01 section 5.",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "node"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "manifest_version": {
+      "type": "string",
+      "pattern": "^1(\\.[0-9]+)?$"
+    },
+    "node": {
+      "type": "object",
+      "required": [
+        "name",
+        "namespace",
+        "target_language"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "maxLength": 64
+        },
+        "namespace": {
+          "type": "string",
+          "pattern": "^/([a-z][a-z0-9_]*(/[a-z][a-z0-9_]*)*)?$"
+        },
+        "target_language": {
+          "type": "string",
+          "enum": [
+            "cpp",
+            "python"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "default": "0.1.0"
+        },
+        "rmw": {
+          "type": "string",
+          "enum": [
+            "fastrtps"
+          ],
+          "default": "fastrtps",
+          "description": "RMW the generated package is built against. Only fastrtps (Jazzy's default) in v1; cyclonedds and zenoh are reserved."
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "parameters": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Identifier"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Parameter"
+      }
+    },
+    "parameter_constraints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ParameterConstraint"
+      }
+    },
+    "state_variables": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Identifier"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/StateVariable"
+      }
+    },
+    "publishers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Publisher"
+      }
+    },
+    "subscribers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Subscriber"
+      }
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Service"
+      }
+    },
+    "pipelines": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Pipeline"
+      }
+    },
+    "lifecycle": {
+      "$ref": "#/$defs/LifecycleExtension"
+    },
+    "shared_memory": {
+      "$ref": "#/$defs/SharedMemoryExtension"
+    },
+    "security": {
+      "$ref": "#/$defs/SecurityExtension"
+    },
+    "telemetry": {
+      "$ref": "#/$defs/TelemetryExtension"
+    },
+    "realtime": {
+      "$ref": "#/$defs/RealtimeExtension"
+    },
+    "simulation": {
+      "$ref": "#/$defs/SimulationExtension"
+    },
+    "concurrency": {
+      "$ref": "#/$defs/ConcurrencyExtension"
+    },
+    "interfaces": {
+      "$ref": "#/$defs/Interfaces"
+    }
+  },
+  "$defs": {
+    "Identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "maxLength": 64
+    },
+    "CanonicalType": {
+      "type": "string",
+      "pattern": "^((bool|int32|int64|float32|float64|string)(\\[\\])?|bytes)$"
+    },
+    "TopicName": {
+      "type": "string",
+      "pattern": "^(~/|/)?([A-Za-z0-9_]+/)*[A-Za-z0-9_]+$"
+    },
+    "MsgType": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*/msg/[A-Z][A-Za-z0-9]*$"
+    },
+    "SrvType": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*/srv/[A-Z][A-Za-z0-9]*$"
+    },
+    "QoSProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "history": {
+          "type": "string",
+          "enum": [
+            "keep_last",
+            "keep_all"
+          ],
+          "default": "keep_last"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10
+        },
+        "reliability": {
+          "type": "string",
+          "enum": [
+            "reliable",
+            "best_effort"
+          ],
+          "default": "reliable"
+        },
+        "durability": {
+          "type": "string",
+          "enum": [
+            "transient_local",
+            "volatile"
+          ],
+          "default": "volatile"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "Publisher": {
+      "type": "object",
+      "required": [
+        "id",
+        "topic",
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "topic": {
+          "$ref": "#/$defs/TopicName"
+        },
+        "type": {
+          "$ref": "#/$defs/MsgType"
+        },
+        "zero_copy": {
+          "type": "boolean",
+          "default": false
+        },
+        "qos": {
+          "$ref": "#/$defs/QoSProfile"
+        },
+        "loan_pool_capacity": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "Subscriber": {
+      "type": "object",
+      "required": [
+        "id",
+        "topic",
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "topic": {
+          "$ref": "#/$defs/TopicName"
+        },
+        "type": {
+          "$ref": "#/$defs/MsgType"
+        },
+        "zero_copy": {
+          "type": "boolean",
+          "default": false
+        },
+        "qos": {
+          "$ref": "#/$defs/QoSProfile"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "Service": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "name": {
+          "$ref": "#/$defs/TopicName"
+        },
+        "type": {
+          "$ref": "#/$defs/SrvType"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "Parameter": {
+      "type": "object",
+      "required": [
+        "type",
+        "default"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/CanonicalType"
+        },
+        "default": {},
+        "read_only": {
+          "type": "boolean",
+          "default": false
+        },
+        "description": {
+          "type": "string"
+        },
+        "validation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "step": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "one_of": {
+              "type": "array",
+              "minItems": 1
+            },
+            "fixed_length": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "regex": {
+              "type": "string"
+            }
+          },
+          "patternProperties": {
+            "^x-": {}
+          }
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "ParameterConstraint": {
+      "type": "object",
+      "required": [
+        "expression"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "expression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "StateVariable": {
+      "type": "object",
+      "required": [
+        "type",
+        "initial_value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/CanonicalType"
+        },
+        "initial_value": {},
+        "description": {
+          "type": "string"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "Trigger": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "source"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "enum": [
+                "subscriber",
+                "service"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/Identifier"
+            }
+          },
+          "patternProperties": {
+            "^x-": {}
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "period_ms"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "timer"
+            },
+            "period_ms": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "clock": {
+              "type": "string",
+              "enum": [
+                "steady",
+                "system",
+                "ros"
+              ],
+              "default": "steady"
+            }
+          },
+          "patternProperties": {
+            "^x-": {}
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "startup"
+            }
+          },
+          "patternProperties": {
+            "^x-": {}
+          }
+        }
+      ]
+    },
+    "Pipeline": {
+      "type": "object",
+      "required": [
+        "name",
+        "trigger"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "trigger": {
+          "$ref": "#/$defs/Trigger"
+        },
+        "expressions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "output_mapping": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*|\\[[0-9]+\\])+$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "callback_group": {
+          "$ref": "#/$defs/Identifier"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "LifecycleExtension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "auto_configure": {
+          "type": "boolean",
+          "default": false
+        },
+        "auto_activate": {
+          "type": "boolean",
+          "default": false
+        },
+        "on_error_strategy": {
+          "enum": [
+            "TransitionToInactive",
+            "Shutdown",
+            "Reset"
+          ],
+          "default": "TransitionToInactive"
+        },
+        "transitions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "on_configure_timeout_sec": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "on_activate_timeout_sec": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "on_deactivate_timeout_sec": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "on_cleanup_timeout_sec": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "patternProperties": {
+            "^x-": {}
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "auto_activate": {
+                "const": true
+              }
+            },
+            "required": [
+              "auto_activate"
+            ]
+          },
+          "then": {
+            "required": [
+              "auto_configure"
+            ],
+            "properties": {
+              "auto_configure": {
+                "const": true
+              }
+            }
+          }
+        }
+      ],
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "SecurityExtension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "security_mode": {
+          "enum": [
+            "enforce",
+            "permissive",
+            "disabled"
+          ],
+          "default": "enforce"
+        },
+        "enclave": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "key_store_path": {
+          "type": "string"
+        },
+        "encryption": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allow_unencrypted_metadata": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "patternProperties": {
+            "^x-": {}
+          }
+        },
+        "permissions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "publish": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "topic": {
+                    "$ref": "#/$defs/TopicName"
+                  },
+                  "allow": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "topic",
+                  "allow"
+                ],
+                "patternProperties": {
+                  "^x-": {}
+                }
+              }
+            },
+            "subscribe": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "topic": {
+                    "$ref": "#/$defs/TopicName"
+                  },
+                  "allow": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "topic",
+                  "allow"
+                ],
+                "patternProperties": {
+                  "^x-": {}
+                }
+              }
+            }
+          },
+          "patternProperties": {
+            "^x-": {}
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "security_mode": {
+                "const": "disabled"
+              }
+            },
+            "required": [
+              "security_mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "enabled": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          },
+          "then": {
+            "required": [
+              "enclave"
+            ]
+          }
+        }
+      ],
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "TelemetryExtension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "tracing_provider": {
+          "enum": [
+            "lttng",
+            "dummy"
+          ],
+          "default": "lttng"
+        },
+        "latency_budget_us": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "jitter_tolerance_us": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "profiling_sample_rate_hz": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "on_budget_exceeded": {
+          "enum": [
+            "log_warning",
+            "raise_diagnostic",
+            "panic"
+          ],
+          "default": "log_warning"
+        },
+        "benchmarks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "pipeline": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "iterations": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "warmup_iterations": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "name",
+              "pipeline",
+              "iterations"
+            ],
+            "patternProperties": {
+              "^x-": {}
+            }
+          }
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "SharedMemoryExtension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "middleware_backend": {
+          "enum": [
+            "iceoryx",
+            "cyclonedds_shm",
+            "rmw_default"
+          ],
+          "default": "rmw_default"
+        },
+        "segment_size_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_loaned_messages": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fallback_to_heap": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "RealtimeExtension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "policy": {
+          "enum": [
+            "SCHED_FIFO",
+            "SCHED_RR",
+            "SCHED_DEADLINE",
+            "SCHED_OTHER"
+          ],
+          "default": "SCHED_FIFO"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99
+        },
+        "deadline_params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "runtime_us": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "deadline_us": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "period_us": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "runtime_us",
+            "deadline_us",
+            "period_us"
+          ],
+          "patternProperties": {
+            "^x-": {}
+          }
+        },
+        "cpu_affinity": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "memory_lock": {
+          "type": "boolean",
+          "default": false
+        },
+        "stack_size_bytes": {
+          "type": "integer",
+          "minimum": 16384
+        },
+        "executor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "enum": [
+                "EventsExecutor",
+                "StaticSingleThreadedExecutor",
+                "SingleThreadedExecutor",
+                "MultiThreadedExecutor"
+              ],
+              "default": "SingleThreadedExecutor"
+            }
+          },
+          "patternProperties": {
+            "^x-": {}
+          }
+        },
+        "callback_groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "type": {
+                "enum": [
+                  "MutuallyExclusive",
+                  "Reentrant"
+                ]
+              },
+              "deadline_us": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "on_deadline_miss": {
+                "enum": [
+                  "raise_diagnostic",
+                  "log_warning",
+                  "error_transition"
+                ],
+                "default": "log_warning"
+              }
+            },
+            "required": [
+              "name",
+              "type"
+            ],
+            "patternProperties": {
+              "^x-": {}
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "policy": {
+                "enum": [
+                  "SCHED_FIFO",
+                  "SCHED_RR"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "priority"
+            ],
+            "not": {
+              "required": [
+                "deadline_params"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "policy": {
+                "const": "SCHED_DEADLINE"
+              }
+            },
+            "required": [
+              "policy"
+            ]
+          },
+          "then": {
+            "required": [
+              "deadline_params"
+            ],
+            "not": {
+              "required": [
+                "priority"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "policy": {
+                "const": "SCHED_OTHER"
+              }
+            },
+            "required": [
+              "policy"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "priority"
+                  ]
+                },
+                {
+                  "required": [
+                    "deadline_params"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "SimulationExtension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "use_sim_time": {
+          "type": "boolean",
+          "default": true
+        },
+        "clock_topic": {
+          "$ref": "#/$defs/TopicName",
+          "default": "/clock"
+        },
+        "step_mode": {
+          "enum": [
+            "lockstep",
+            "wall_clock",
+            "real_time_factor"
+          ],
+          "default": "lockstep"
+        },
+        "real_time_factor": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "fault_injection": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "target": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "type": {
+                "enum": [
+                  "latency_spike",
+                  "packet_drop",
+                  "bit_flip",
+                  "freeze_value"
+                ]
+              },
+              "probability": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "delay_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "seed": {
+                "type": "integer",
+                "default": 1337
+              },
+              "enabled_in_production": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "required": [
+              "target",
+              "type",
+              "probability"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "latency_spike"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "delay_ms"
+                  ]
+                }
+              }
+            ],
+            "patternProperties": {
+              "^x-": {}
+            }
+          }
+        },
+        "enabled_in_production": {
+          "type": "boolean",
+          "default": false,
+          "description": "Release builds reject simulation.enabled unless this is true; each fault_injection entry has its own flag."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "step_mode": {
+                "const": "real_time_factor"
+              }
+            },
+            "required": [
+              "step_mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "real_time_factor"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "step_mode": {
+                "const": "wall_clock"
+              }
+            },
+            "required": [
+              "step_mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "use_sim_time": {
+                "const": false
+              }
+            }
+          }
+        }
+      ],
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "ConcurrencyExtension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "threads": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Executor worker threads. 1 = fully serialized callbacks; >1 = multi-threaded executor with derived callback groups (SPEC-12)."
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "RosFieldType": {
+      "type": "string",
+      "pattern": "^(bool|byte|char|int8|uint8|int16|uint16|int32|uint32|int64|uint64|float32|float64|string|time|duration)(\\[\\])?$",
+      "description": "ROS primitive type of a declared field; mapped to a canonical type by SPEC-02 section 2.1. time and duration are exposed as float64 seconds."
+    },
+    "FieldMap": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/RosFieldType"
+      },
+      "description": "Dotted leaf field path -> ROS primitive type."
+    },
+    "MsgInterface": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/FieldMap"
+        },
+        "fixed_size": {
+          "type": "boolean",
+          "default": false,
+          "description": "The whole message type has a fixed size (no strings or sequences anywhere). Declared, not verified."
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "SrvInterface": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/FieldMap"
+        },
+        "response": {
+          "$ref": "#/$defs/FieldMap"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "Interfaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The fields of each message/service type that the manifest reads or writes. The framework never reads .msg/.srv files.",
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*/msg/[A-Z][A-Za-z0-9]*$": {
+          "$ref": "#/$defs/MsgInterface"
+        },
+        "^[a-z][a-z0-9_]*/srv/[A-Z][A-Za-z0-9]*$": {
+          "$ref": "#/$defs/SrvInterface"
+        }
+      }
+    }
+  },
+  "patternProperties": {
+    "^x-": {}
+  }
+}

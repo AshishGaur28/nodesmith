@@ -1,0 +1,105 @@
+# Service-heavy node: three services change and read one piece of state, and a
+# subscriber pipeline uses it. Services and the subscriber share `gain`, so the
+# semantic pass puts them in one callback group (SPEC-12).
+manifest_version = "1"
+
+[node]
+name = "gain_node"
+namespace = "/processing"
+target_language = "cpp"
+version = "1.0.0"
+description = "Scales an input value by a gain that is set and read through services."
+
+[parameters.max_gain]
+type = "float64"
+default = 10.0
+description = "Largest gain a set_gain request may apply."
+[parameters.max_gain.validation]
+min = 0.0
+
+[state_variables.gain]
+type = "float64"
+initial_value = 1.0
+
+[[subscribers]]
+id = "input_sub"
+topic = "/processing/input"
+type = "std_msgs/msg/Float64"
+
+[[publishers]]
+id = "output_pub"
+topic = "/processing/output"
+type = "std_msgs/msg/Float64"
+
+[[services]]
+id = "set_gain_srv"
+name = "/processing/set_gain"
+type = "my_interfaces/srv/SetGain"
+
+[[services]]
+id = "reset_gain_srv"
+name = "/processing/reset_gain"
+type = "std_srvs/srv/Trigger"
+
+[[services]]
+id = "get_gain_srv"
+name = "/processing/get_gain"
+type = "my_interfaces/srv/GetGain"
+
+[interfaces."std_msgs/msg/Float64".fields]
+data = "float64"
+
+[interfaces."my_interfaces/srv/SetGain".request]
+gain = "float64"
+[interfaces."my_interfaces/srv/SetGain".response]
+accepted = "bool"
+applied = "float64"
+
+[interfaces."std_srvs/srv/Trigger".response]
+success = "bool"
+message = "string"
+
+[interfaces."my_interfaces/srv/GetGain".response]
+gain = "float64"
+
+[[pipelines]]
+name = "apply_gain"
+expressions = ["let scaled = msg.data * state.gain"]
+[pipelines.trigger]
+type = "subscriber"
+source = "input_sub"
+[pipelines.output_mapping]
+"output_pub.data" = "scaled"
+
+[[pipelines]]
+name = "handle_set"
+expressions = [
+  "let ok = req.gain >= 0.0 && req.gain <= param.max_gain",
+  "let next = ok ? req.gain : state.gain",
+  "state.gain = next",
+]
+[pipelines.trigger]
+type = "service"
+source = "set_gain_srv"
+[pipelines.output_mapping]
+"res.accepted" = "ok"
+"res.applied" = "next"
+
+[[pipelines]]
+name = "handle_reset"
+expressions = ["state.gain = 1.0"]
+[pipelines.trigger]
+type = "service"
+source = "reset_gain_srv"
+[pipelines.output_mapping]
+"res.success" = "true"
+"res.message" = "\"gain reset\""
+
+[[pipelines]]
+name = "handle_get"
+expressions = []
+[pipelines.trigger]
+type = "service"
+source = "get_gain_srv"
+[pipelines.output_mapping]
+"res.gain" = "state.gain"

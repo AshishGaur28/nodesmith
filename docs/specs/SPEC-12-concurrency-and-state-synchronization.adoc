@@ -1,0 +1,135 @@
+= SPEC-12: Concurrency, Callback Groups & State Synchronization Specification
+:status: Draft
+:version: 0.1.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Scope & Principle
+
+`SPEC-12` defines how generated nodes run pipelines concurrently without data races: which callbacks may overlap, how state and parameters are kept consistent, and how lifecycle transitions interact with running pipelines. It supplies the mechanism behind `SPEC-02` §7 ("commit atomically with respect to other pipelines").
+
+*Principle: exclusion by construction, not locking.* The toolchain analyses which state variables each pipeline reads and writes and places every pipeline that shares state into one `MutuallyExclusive` callback group. Callbacks of one such group never overlap, so state needs no mutex, commits are trivially atomic, and lock-order deadlock cannot occur. Everything else that is shared across groups (parameters, gates, counters, diagnostics) is either immutable-after-publication or a single atomic.
+
+== 2. Execution Model
+
+* An *execution* is one trigger firing of one pipeline (`SPEC-02` §7). It is the unit of exclusion.
+* The manifest sets the worker-thread count with `[concurrency] threads` (default `1`; schema: `$defs/ConcurrencyExtension`).
+* The *effective executor* is `realtime.executor.type` when the `realtime` block sets one, otherwise `SingleThreadedExecutor` if `threads = 1` and `MultiThreadedExecutor` if `threads > 1`. `threads > 1` requires `MultiThreadedExecutor`; a `Single`/`StaticSingle`/`Events` executor with `threads > 1` is `ERR_RT_002`.
+* With any executor that runs one callback at a time (everything except `MultiThreadedExecutor` with `threads > 1`), all callbacks are already serialised: callback groups are still emitted (they are part of the IR) but no cross-group reasoning is required.
+* Callback groups apply to every callback source the node owns: subscriptions, timers, service servers, startup one-shots. Parameter-service and lifecycle-service callbacks belong to the node's default group and are handled in §5 and §6.
+
+Callbacks the generator adds for its own needs (deferred escalation, diagnostics drain) are owned by the pipeline they serve and run in that pipeline's group, so they are covered by the same exclusion.
+
+The analysis and the rules of §3 run on every build, whatever the thread count, so a manifest that is valid at `threads = 1` cannot become invalid merely by raising the count.
+
+== 3. Callback Group Assignment (deterministic, part of lowering)
+
+The result is stored in the IR (`concurrency.callback_groups`, each DAG's `callback_group`; `SPEC-00`) so every target generator uses the same assignment.
+
+=== 3.1. Access sets
+
+For a pipeline `P`: `R(P)` is the set of `state.` variables referenced in its expressions, `W(P)` the set it assigns. A pipeline is *stateless* if `R(P)` and `W(P)` are empty and it uses neither `dt_sec()` nor `rate_limit(...)` (both keep per-pipeline internal state, which is private to `P` and needs only the self-exclusion of its own group).
+
+Two pipelines *conflict* if one writes a variable the other reads or writes: `W(P) ∩ (R(Q) ∪ W(Q)) ≠ ∅` or the mirror. Two readers of the same variable do not conflict.
+
+=== 3.2. Algorithm
+
+1. Build the conflict graph over all pipelines (including `startup` pipelines) and take its connected components.
+2. If a component contains pipelines that name (via `callback_group`, `SPEC-10`) two or more different groups, that is `ERR_CNC_201`.
+3. If a component contains pipelines that all name the same group `G`, or some name `G` and the rest name none, the whole component joins `G`. `G` must be `MutuallyExclusive` when any member is not stateless (`ERR_CNC_201` otherwise).
+4. A component naming no group is assigned an automatic `MutuallyExclusive` group: `state_domain_<k>` if it is stateful (with `k` = 1, 2, … in order of each component's lexicographically smallest pipeline name), or `pipeline_<name>` if it is a single stateless pipeline.
+5. A stateless singleton that names a `Reentrant` group is placed there and may then run concurrently with itself; every other pipeline never runs concurrently with itself (this is the `SPEC-02` §7 rule with its single exception).
+
+Explicit `MutuallyExclusive` groups may hold pipelines that do not conflict (the author chose extra serialisation, e.g. a control loop and its watchdog). Names `state_domain_*` and `pipeline_*` are reserved for automatic groups (`ERR_SEM_104` if declared).
+
+=== 3.3. Consequences
+
+* No two pipelines in different groups touch a common state variable, so state needs no lock.
+* A stateless pipeline never blocks a stateful one.
+* No callback waits on another group (service clients are not part of manifest v1), so no group can wait on itself or on another: there is no lock-order graph and no deadlock class to detect. `ERR_CNC_202` is retired. `ERR_CNC_203` is retired too: every supported target has callback groups.
+* Long pipelines delay other callbacks *in their own group only*. Authors who need isolation split state or use explicit groups (`SPEC-10`).
+
+== 4. State Consistency
+
+* State variables are plain fields of the node, with no atomics or mutexes, and are touched only by executions of pipelines in their conflict component's group.
+* An execution reads `state.` from the fields (unchanged during the execution, because its group is exclusive) and stages writes locally (`SPEC-02` §7 step 3). At §7 step 5 the staged values are copied into the fields; no other execution that reads or writes them can be running, so the commit is atomic to every observer.
+* Publication happens inside the execution, after commit. `rmw` publish is thread-safe.
+* Ordering guarantee: executions of one group are serialised in the order the executor dequeues them. The framework promises nothing about the relative order of executions in different groups, or about executor fairness.
+
+== 5. Parameters
+
+Parameter updates arrive on the parameter service thread, possibly concurrently with any group. To keep `param.` reads consistent and atomic across a multi-parameter update (`SPEC-07` §3):
+
+1. The node holds a *parameter snapshot*: an immutable record of every parameter value.
+2. An execution reads the current snapshot pointer once, at `SPEC-02` §7 step 1, and uses that snapshot for the whole execution.
+3. The `OnSetParametersCallback` validates the *proposed* values (including `parameter_constraints`, which see only parameters), builds a new snapshot for the whole batch, and publishes it with one atomic pointer swap. A rejected batch publishes nothing.
+4. Old snapshots stay valid until the last execution that took them finishes.
+
+Requirements on the mechanism (the generator chooses; a reference layout is a ring of `threads + 2` preallocated snapshot slots with a per-slot reader count and one atomic current index):
+
+* Reads take no lock and allocate nothing, so they are legal on real-time paths (`SPEC-10`) — this rules out `std::atomic<std::shared_ptr>` when `realtime.enabled` is true, because it is not guaranteed lock-free.
+* Writers are serialised by rcl (one set-parameters call at a time), so a single writer is sufficient.
+* `read_only` parameters are never swapped after configuration.
+
+Effects of a change take hold at the next execution start; an execution already running keeps its snapshot.
+
+*Reference implementation (C++, tested under ThreadSanitizer):* `docs/specs/reference/cpp/concurrency_primitives.hpp`, with `concurrency_primitives_test.cpp`. Use `SnapshotRing<Params, threads + 2>`.
+
+[source,cpp]
+----
+include::reference/cpp/concurrency_primitives.hpp[tag=snapshot_ring]
+----
+
+== 6. Lifecycle & Startup Interaction
+
+Pipelines run only in the `Active` state (`SPEC-05`). Non-lifecycle nodes behave as always active after construction.
+
+* *Gate.* Every execution first tries to enter the *run gate* (an atomic in-flight counter plus an open flag). When the gate is closed the trigger is dropped without effect (timer firings, subscription messages and service requests; a service call returns the ROS default-initialised response).
+* *Activate.* `on_activate` opens the gate, then schedules `startup` pipelines exactly once through a one-shot in each pipeline's own group.
+* *Deactivate.* `on_deactivate` closes the gate, then waits until the in-flight counter is zero, bounded by `lifecycle.transitions.on_deactivate_timeout_sec`; if the bound is exceeded it returns `FAILURE` and reports `ERR_LCY_102`. Executions are non-blocking (`SPEC-02`), so the wait is bounded by the longest execution.
+* *Cleanup / configure.* State is (re)initialised to `initial_value` in `on_configure` and released in `on_cleanup`; the gate guarantees no execution is running at those moments.
+* *Error path.* A numeric fault (`ERR_RUN_101`) aborts only that execution and does not close the gate by itself. If the lifecycle error strategy (`SPEC-05` §6) requires leaving `Active`, the generated code first *leaves the gate* (the execution ends) and only then triggers the transition; it must never trigger a transition from inside an execution, because `on_deactivate` waits for that execution to finish and would wait on itself.
+
+[source,cpp]
+----
+include::reference/cpp/concurrency_primitives.hpp[tag=run_gate]
+----
+
+== 7. Other Shared Runtime Objects
+
+[cols="2,3", options="header"]
+|===
+| Object | Rule
+| Run-gate counter, fault and deadline counters | Single atomics, relaxed ordering except the gate (acquire/release).
+| Diagnostics emission from a callback | Fixed-capacity preallocated single-producer-per-group ring drained by a non-real-time thread; a full ring drops the oldest entry and increments a counter (`SPEC-04` §4.5).
+| Publishers, subscriptions, timers | Owned by the node, created before activation; callbacks never create or destroy them.
+| Any generator-introduced mutex | Not allowed on a path executed by a callback. If one is unavoidable on a path shared with a real-time thread it must use priority inheritance (`SPEC-10` §3.1 rule 3). Target exception, because the language lacks atomics: *Python* guards the run-gate counter with a `threading.Lock`. Python does not offer hard real-time (`SPEC-10` §4.2).
+|===
+
+== 8. Target Mapping
+
+[cols="1m,3", options="header"]
+|===
+| Target | Mapping
+| C++ | One `rclcpp::CallbackGroup` per IR group (`MutuallyExclusive`/`Reentrant`), created in the constructor or `on_configure` (`SPEC-05`) with the default `automatically_add_to_executor_with_node = true`; if a generator disables that flag it MUST call `executor.add_callback_group` for every group, and a conformance test proves every callback executes. The group is passed in `SubscriptionOptions`, `create_timer`, `create_service`. The executor is built in the generated `main()` from `concurrency.threads` and the effective executor type.
+| Python | `MutuallyExclusiveCallbackGroup` / `ReentrantCallbackGroup` passed to `create_subscription/timer/service`; `MultiThreadedExecutor(num_threads=threads)`. The GIL does not remove the need for the exclusion rules (callbacks interleave at bytecode level).
+|===
+
+== 9. Verification (`SPEC-04` Gate 3)
+
+Gate 3 runs the §3 algorithm and reports:
+
+* `ERR_CNC_201` — conflicting pipelines split across groups, a stateful pipeline placed in a `Reentrant` group, or a component that names more than one group.
+* Related, from the manifest rules: `ERR_SEM_104` (duplicate or reserved group names), `ERR_SEM_105` (unknown `callback_group`), `ERR_RT_002` (`realtime` executor/threads mismatch, or `callback_group` without an enabled `realtime` block).
+
+`nodesmith lower` writes the resulting groups into the IR, which is the way to inspect an assignment.
+
+*Conformance tests (per target with `threads > 1`):* (1) two pipelines incrementing the same counter 100 000 times each end at exactly 200 000; (2) a multi-parameter `set_parameters` batch is never observed half-applied by a pipeline that reads both; (3) a `deactivate` issued during a busy pipeline returns after that execution finishes and no publication occurs afterwards; (4) every callback of every group executes at least once.
+
+== 10. Worked Example
+
+`examples/03_state_machine.toml` has pipeline `tick` (timer, writes and reads `state.count`) and `reset` (service, writes `state.count`). They conflict, so both are assigned to `state_domain_1` (`MutuallyExclusive`). With `threads = 4` they still never overlap: a reset arriving during a tick waits for that tick to finish, and `count` needs no lock.
+
+`examples/02_filter_pipeline.toml` has one pipeline `filter_imu` using `state.prev_z`: it is its own component, `state_domain_1`. If a second, purely stateless pipeline were added it would get `pipeline_<name>` and run in parallel with `filter_imu`.

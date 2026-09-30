@@ -1,0 +1,320 @@
+{
+  "concurrency": {
+    "callback_groups": [
+      {
+        "explicit": true,
+        "name": "control_loop_group",
+        "type": "MutuallyExclusive"
+      },
+      {
+        "explicit": false,
+        "name": "pipeline_relay_frame",
+        "type": "MutuallyExclusive"
+      }
+    ],
+    "executor": "MultiThreadedExecutor",
+    "threads": 2
+  },
+  "execution_dags": [
+    {
+      "assignments": [
+        {
+          "source_node_id": "n6",
+          "target_field_path": "steering_pub.data"
+        }
+      ],
+      "callback_group": "control_loop_group",
+      "id": "control_loop",
+      "nodes": [
+        {
+          "attrs": {
+            "path": "linear_acceleration.x",
+            "root": "msg"
+          },
+          "id": "n0",
+          "op": "input",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "value": 0.1
+          },
+          "id": "n1",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "operator": "*"
+          },
+          "id": "n2",
+          "op": "binary",
+          "operands": [
+            "n0",
+            "n1"
+          ],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "value": 1.0
+          },
+          "id": "n3",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "operator": "-"
+          },
+          "id": "n4",
+          "op": "unary",
+          "operands": [
+            "n3"
+          ],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "value": 1.0
+          },
+          "id": "n5",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "function": "clamp"
+          },
+          "id": "n6",
+          "label": "cmd",
+          "op": "call",
+          "operands": [
+            "n2",
+            "n4",
+            "n5"
+          ],
+          "type_symbol": "float64"
+        }
+      ],
+      "state_writes": [],
+      "trigger": {
+        "kind": "subscriber",
+        "source_id": "imu_sub"
+      }
+    },
+    {
+      "assignments": [
+        {
+          "source_node_id": "n0",
+          "target_field_path": "frame_pub.count"
+        }
+      ],
+      "callback_group": "pipeline_relay_frame",
+      "id": "relay_frame",
+      "nodes": [
+        {
+          "attrs": {
+            "path": "count",
+            "root": "msg"
+          },
+          "id": "n0",
+          "op": "input",
+          "operands": [],
+          "type_symbol": "int32"
+        }
+      ],
+      "state_writes": [],
+      "trigger": {
+        "kind": "subscriber",
+        "source_id": "frame_sub"
+      }
+    }
+  ],
+  "extensions": {
+    "concurrency": {
+      "threads": 2
+    },
+    "lifecycle": {
+      "auto_activate": false,
+      "auto_configure": false,
+      "enabled": true,
+      "on_error_strategy": "Reset",
+      "transitions": {
+        "on_activate_timeout_sec": 0.5,
+        "on_configure_timeout_sec": 2.0
+      }
+    },
+    "realtime": {
+      "callback_groups": [
+        {
+          "deadline_us": 1000,
+          "name": "control_loop_group",
+          "on_deadline_miss": "error_transition",
+          "type": "MutuallyExclusive"
+        }
+      ],
+      "cpu_affinity": [
+        2,
+        3
+      ],
+      "enabled": true,
+      "executor": {
+        "type": "MultiThreadedExecutor"
+      },
+      "memory_lock": true,
+      "policy": "SCHED_FIFO",
+      "priority": 80,
+      "stack_size_bytes": 1048576
+    },
+    "security": {
+      "enabled": true,
+      "enclave": "/perception/camera/vision_ctrl_node",
+      "encryption": {
+        "allow_unencrypted_metadata": false
+      },
+      "key_store_path": "/etc/ros/sros2/keystore",
+      "permissions": {
+        "subscribe": [
+          {
+            "allow": true,
+            "topic": "/clock"
+          }
+        ]
+      },
+      "security_mode": "enforce"
+    },
+    "shared_memory": {
+      "enabled": true,
+      "fallback_to_heap": true,
+      "max_loaned_messages": 8,
+      "middleware_backend": "rmw_default",
+      "segment_size_bytes": 16777216
+    },
+    "simulation": {
+      "enabled": true,
+      "enabled_in_production": false,
+      "fault_injection": [
+        {
+          "delay_ms": 50,
+          "enabled_in_production": false,
+          "probability": 0.05,
+          "seed": 1337,
+          "target": "steering_pub",
+          "type": "latency_spike"
+        }
+      ],
+      "step_mode": "lockstep",
+      "use_sim_time": true
+    },
+    "telemetry": {
+      "benchmarks": [
+        {
+          "iterations": 10000,
+          "name": "control_bench",
+          "pipeline": "control_loop",
+          "warmup_iterations": 1000
+        }
+      ],
+      "enabled": true,
+      "jitter_tolerance_us": 50,
+      "latency_budget_us": 500,
+      "on_budget_exceeded": "raise_diagnostic",
+      "tracing_provider": "lttng"
+    }
+  },
+  "interface_types": [
+    {
+      "fields": {
+        "count": "int32"
+      },
+      "fixed_size": true,
+      "kind": "msg",
+      "type_symbol": "my_interfaces/msg/LidarFrame"
+    },
+    {
+      "fields": {
+        "linear_acceleration.x": "float64"
+      },
+      "fixed_size": false,
+      "kind": "msg",
+      "type_symbol": "sensor_msgs/msg/Imu"
+    },
+    {
+      "fields": {
+        "data": "float64"
+      },
+      "fixed_size": false,
+      "kind": "msg",
+      "type_symbol": "std_msgs/msg/Float64"
+    }
+  ],
+  "interfaces": {
+    "publishers": [
+      {
+        "identifier": "frame_pub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/perception/filtered_frame",
+        "type_symbol": "my_interfaces/msg/LidarFrame",
+        "zero_copy": true
+      },
+      {
+        "identifier": "steering_pub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/control/steering",
+        "type_symbol": "std_msgs/msg/Float64",
+        "zero_copy": false
+      }
+    ],
+    "services": [],
+    "subscribers": [
+      {
+        "identifier": "frame_sub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/perception/raw_frame",
+        "type_symbol": "my_interfaces/msg/LidarFrame",
+        "zero_copy": true
+      },
+      {
+        "identifier": "imu_sub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/sensors/imu",
+        "type_symbol": "sensor_msgs/msg/Imu",
+        "zero_copy": false
+      }
+    ]
+  },
+  "ir_version": "1.0.0",
+  "node_meta": {
+    "name": "vision_ctrl_node",
+    "namespace": "/perception/camera",
+    "version": "0.1.0"
+  },
+  "parameter_constraints": [],
+  "parameters": [],
+  "state_buffers": []
+}

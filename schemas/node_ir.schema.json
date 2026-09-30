@@ -1,0 +1,592 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nodesmith:schema:node_ir",
+  "title": "Nodesmith Lowered IR Schema",
+  "description": "Normative IR (SPEC-00). Language-neutral: contains no target language. All defaults resolved, all lists in canonical order.",
+  "type": "object",
+  "required": [
+    "ir_version",
+    "node_meta",
+    "interfaces",
+    "parameters",
+    "state_buffers",
+    "execution_dags",
+    "concurrency",
+    "interface_types"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "ir_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "node_meta": {
+      "type": "object",
+      "required": [
+        "name",
+        "namespace",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "interfaces": {
+      "type": "object",
+      "required": [
+        "publishers",
+        "subscribers",
+        "services"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "publishers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IRChannel"
+          }
+        },
+        "subscribers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IRChannel"
+          }
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IRService"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/IRParameter"
+      }
+    },
+    "parameter_constraints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/IRParameterConstraint"
+      }
+    },
+    "state_buffers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/IRStateBuffer"
+      }
+    },
+    "execution_dags": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/IRExecutionDAG"
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Canonicalized extension blocks keyed by block name; each is validated by its owning spec's schema.",
+      "additionalProperties": true
+    },
+    "concurrency": {
+      "$ref": "#/$defs/IRConcurrency"
+    },
+    "interface_types": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/IRInterfaceType"
+      }
+    }
+  },
+  "$defs": {
+    "IRType": {
+      "type": "string",
+      "pattern": "^((bool|int32|int64|float32|float64|string)(\\[\\])?|bytes)$"
+    },
+    "IRQoS": {
+      "type": "object",
+      "required": [
+        "history",
+        "depth",
+        "reliability",
+        "durability"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "history": {
+          "enum": [
+            "keep_last",
+            "keep_all"
+          ]
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reliability": {
+          "enum": [
+            "reliable",
+            "best_effort"
+          ]
+        },
+        "durability": {
+          "enum": [
+            "transient_local",
+            "volatile"
+          ]
+        }
+      }
+    },
+    "IRChannel": {
+      "type": "object",
+      "required": [
+        "identifier",
+        "topic",
+        "type_symbol",
+        "zero_copy",
+        "qos"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "identifier": {
+          "type": "string"
+        },
+        "topic": {
+          "type": "string"
+        },
+        "type_symbol": {
+          "type": "string"
+        },
+        "zero_copy": {
+          "type": "boolean"
+        },
+        "qos": {
+          "$ref": "#/$defs/IRQoS"
+        }
+      }
+    },
+    "IRService": {
+      "type": "object",
+      "required": [
+        "identifier",
+        "service_name",
+        "type_symbol"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "identifier": {
+          "type": "string"
+        },
+        "service_name": {
+          "type": "string"
+        },
+        "type_symbol": {
+          "type": "string"
+        }
+      }
+    },
+    "IRParameter": {
+      "type": "object",
+      "required": [
+        "name",
+        "canonical_type",
+        "default_value",
+        "read_only"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "canonical_type": {
+          "$ref": "#/$defs/IRType"
+        },
+        "default_value": {},
+        "read_only": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        },
+        "validation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "step": {
+              "type": "number"
+            },
+            "one_of": {
+              "type": "array"
+            },
+            "fixed_length": {
+              "type": "integer"
+            },
+            "regex": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "IRParameterConstraint": {
+      "type": "object",
+      "required": [
+        "root_node_id",
+        "nodes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "root_node_id": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IRASTNode"
+          }
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "IRStateBuffer": {
+      "type": "object",
+      "required": [
+        "name",
+        "canonical_type",
+        "initial_value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "canonical_type": {
+          "$ref": "#/$defs/IRType"
+        },
+        "initial_value": {}
+      }
+    },
+    "IRExecutionDAG": {
+      "type": "object",
+      "required": [
+        "id",
+        "trigger",
+        "nodes",
+        "state_writes",
+        "assignments",
+        "callback_group"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "subscriber",
+                "timer",
+                "service",
+                "startup"
+              ]
+            },
+            "source_id": {
+              "type": "string"
+            },
+            "period_ms": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "clock": {
+              "enum": [
+                "steady",
+                "system",
+                "ros"
+              ]
+            }
+          }
+        },
+        "nodes": {
+          "description": "Topologically ordered: a node only references earlier nodes.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IRASTNode"
+          }
+        },
+        "state_writes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IRStateWrite"
+          }
+        },
+        "assignments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IRFieldAssignment"
+          }
+        },
+        "callback_group": {
+          "type": "string",
+          "description": "Name of an entry in concurrency.callback_groups (SPEC-12 section 3)."
+        }
+      }
+    },
+    "IRASTNode": {
+      "type": "object",
+      "required": [
+        "id",
+        "op",
+        "type_symbol",
+        "operands"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "op": {
+          "enum": [
+            "const",
+            "param",
+            "state",
+            "input",
+            "index",
+            "unary",
+            "binary",
+            "select",
+            "call"
+          ]
+        },
+        "type_symbol": {
+          "$ref": "#/$defs/IRType"
+        },
+        "operands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "attrs": {
+          "type": "object",
+          "description": "const: value; param/state: name; input: root (msg|req), path; unary/binary: operator; call: function.",
+          "additionalProperties": true
+        },
+        "label": {
+          "type": "string",
+          "description": "Source `let` name; debug only, never semantic."
+        }
+      }
+    },
+    "IRStateWrite": {
+      "type": "object",
+      "required": [
+        "state_name",
+        "source_node_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "state_name": {
+          "type": "string"
+        },
+        "source_node_id": {
+          "type": "string"
+        }
+      }
+    },
+    "IRFieldAssignment": {
+      "type": "object",
+      "required": [
+        "target_field_path",
+        "source_node_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "target_field_path": {
+          "type": "string",
+          "description": "<publisher_id>.<field path> or res.<field path>"
+        },
+        "source_node_id": {
+          "type": "string"
+        }
+      }
+    },
+    "IRConcurrency": {
+      "type": "object",
+      "required": [
+        "executor",
+        "threads",
+        "callback_groups"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "executor": {
+          "enum": [
+            "SingleThreadedExecutor",
+            "MultiThreadedExecutor",
+            "StaticSingleThreadedExecutor",
+            "EventsExecutor"
+          ]
+        },
+        "threads": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "callback_groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "MutuallyExclusive",
+                  "Reentrant"
+                ]
+              },
+              "explicit": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "IRInterfaceType": {
+      "type": "object",
+      "required": [
+        "type_symbol",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type_symbol": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "msg",
+            "srv"
+          ]
+        },
+        "fixed_size": {
+          "type": "boolean"
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^(bool|byte|char|int8|uint8|int16|uint16|int32|uint32|int64|uint64|float32|float64|string|time|duration)(\\[\\])?$"
+          }
+        },
+        "request": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^(bool|byte|char|int8|uint8|int16|uint16|int32|uint32|int64|uint64|float32|float64|string|time|duration)(\\[\\])?$"
+          }
+        },
+        "response": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^(bool|byte|char|int8|uint8|int16|uint16|int32|uint32|int64|uint64|float32|float64|string|time|duration)(\\[\\])?$"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "msg"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "fixed_size",
+              "fields"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "request"
+                  ]
+                },
+                {
+                  "required": [
+                    "response"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "srv"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "request",
+              "response"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "fields"
+                  ]
+                },
+                {
+                  "required": [
+                    "fixed_size"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

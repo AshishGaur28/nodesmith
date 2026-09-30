@@ -1,0 +1,125 @@
+# Exercises every extension block. Not a realistic node: it exists to pin the schema.
+manifest_version = "1"
+
+[node]
+name = "vision_ctrl_node"
+namespace = "/perception/camera"
+target_language = "cpp"
+
+[[subscribers]]
+id = "frame_sub"
+topic = "/perception/raw_frame"
+type = "my_interfaces/msg/LidarFrame"
+zero_copy = true
+
+[[subscribers]]
+id = "imu_sub"
+topic = "/sensors/imu"
+type = "sensor_msgs/msg/Imu"
+
+[[publishers]]
+id = "frame_pub"
+topic = "/perception/filtered_frame"
+type = "my_interfaces/msg/LidarFrame"
+zero_copy = true
+loan_pool_capacity = 4
+
+[[publishers]]
+id = "steering_pub"
+topic = "/control/steering"
+type = "std_msgs/msg/Float64"
+
+[interfaces."my_interfaces/msg/LidarFrame"]
+fixed_size = true
+[interfaces."my_interfaces/msg/LidarFrame".fields]
+count = "int32"
+
+[interfaces."sensor_msgs/msg/Imu".fields]
+"linear_acceleration.x" = "float64"
+
+[interfaces."std_msgs/msg/Float64".fields]
+data = "float64"
+
+[[pipelines]]
+name = "relay_frame"
+expressions = []
+[pipelines.trigger]
+type = "subscriber"
+source = "frame_sub"
+[pipelines.output_mapping]
+"frame_pub.count" = "msg.count"
+
+[[pipelines]]
+name = "control_loop"
+callback_group = "control_loop_group"
+expressions = ["let cmd = clamp(msg.linear_acceleration.x * 0.1, -1.0, 1.0)"]
+
+[pipelines.trigger]
+type = "subscriber"
+source = "imu_sub"
+
+[pipelines.output_mapping]
+"steering_pub.data" = "cmd"
+
+[lifecycle]
+auto_configure = false
+auto_activate = false
+on_error_strategy = "Reset"
+[lifecycle.transitions]
+on_configure_timeout_sec = 2.0
+on_activate_timeout_sec = 0.5
+
+[shared_memory]
+middleware_backend = "rmw_default"
+segment_size_bytes = 16777216
+max_loaned_messages = 8
+fallback_to_heap = true
+
+[security]
+enabled = true
+enclave = "/perception/camera/vision_ctrl_node"
+security_mode = "enforce"
+key_store_path = "/etc/ros/sros2/keystore"
+[[security.permissions.subscribe]]
+topic = "/clock"
+allow = true
+
+[telemetry]
+enabled = true
+tracing_provider = "lttng"
+latency_budget_us = 500
+jitter_tolerance_us = 50
+on_budget_exceeded = "raise_diagnostic"
+[[telemetry.benchmarks]]
+name = "control_bench"
+pipeline = "control_loop"
+iterations = 10000
+warmup_iterations = 1000
+
+[realtime]
+enabled = true
+policy = "SCHED_FIFO"
+priority = 80
+cpu_affinity = [2, 3]
+memory_lock = true
+stack_size_bytes = 1048576
+[realtime.executor]
+type = "MultiThreadedExecutor"
+[[realtime.callback_groups]]
+name = "control_loop_group"
+type = "MutuallyExclusive"
+deadline_us = 1000
+on_deadline_miss = "error_transition"
+
+[concurrency]
+threads = 2
+
+[simulation]
+enabled = true
+use_sim_time = true
+step_mode = "lockstep"
+[[simulation.fault_injection]]
+target = "steering_pub"
+type = "latency_spike"
+probability = 0.05
+delay_ms = 50

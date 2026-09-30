@@ -1,0 +1,5 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+target_language = "cpp"

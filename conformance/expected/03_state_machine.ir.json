@@ -1,0 +1,315 @@
+{
+  "concurrency": {
+    "callback_groups": [
+      {
+        "explicit": false,
+        "name": "state_domain_1",
+        "type": "MutuallyExclusive"
+      }
+    ],
+    "executor": "SingleThreadedExecutor",
+    "threads": 1
+  },
+  "execution_dags": [
+    {
+      "assignments": [
+        {
+          "source_node_id": "n1",
+          "target_field_path": "res.message"
+        },
+        {
+          "source_node_id": "n2",
+          "target_field_path": "res.success"
+        }
+      ],
+      "callback_group": "state_domain_1",
+      "id": "reset",
+      "nodes": [
+        {
+          "attrs": {
+            "value": 0
+          },
+          "id": "n0",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "int64"
+        },
+        {
+          "attrs": {
+            "value": "counter reset"
+          },
+          "id": "n1",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "string"
+        },
+        {
+          "attrs": {
+            "value": true
+          },
+          "id": "n2",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "bool"
+        }
+      ],
+      "state_writes": [
+        {
+          "source_node_id": "n0",
+          "state_name": "count"
+        }
+      ],
+      "trigger": {
+        "kind": "service",
+        "source_id": "reset_srv"
+      }
+    },
+    {
+      "assignments": [
+        {
+          "source_node_id": "n10",
+          "target_field_path": "count_pub.data"
+        }
+      ],
+      "callback_group": "state_domain_1",
+      "id": "tick",
+      "nodes": [
+        {
+          "attrs": {
+            "name": "count"
+          },
+          "id": "n0",
+          "op": "state",
+          "operands": [],
+          "type_symbol": "int64"
+        },
+        {
+          "attrs": {
+            "name": "step"
+          },
+          "id": "n1",
+          "op": "param",
+          "operands": [],
+          "type_symbol": "int64"
+        },
+        {
+          "attrs": {
+            "operator": "+"
+          },
+          "id": "n2",
+          "op": "binary",
+          "operands": [
+            "n0",
+            "n1"
+          ],
+          "type_symbol": "int64"
+        },
+        {
+          "attrs": {
+            "name": "limit"
+          },
+          "id": "n3",
+          "op": "param",
+          "operands": [],
+          "type_symbol": "int64"
+        },
+        {
+          "attrs": {
+            "operator": ">="
+          },
+          "id": "n4",
+          "op": "binary",
+          "operands": [
+            "n2",
+            "n3"
+          ],
+          "type_symbol": "bool"
+        },
+        {
+          "attrs": {
+            "value": 0
+          },
+          "id": "n5",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "int32"
+        },
+        {
+          "attrs": {
+            "name": "count"
+          },
+          "id": "n6",
+          "op": "state",
+          "operands": [],
+          "type_symbol": "int64"
+        },
+        {
+          "attrs": {
+            "name": "step"
+          },
+          "id": "n7",
+          "op": "param",
+          "operands": [],
+          "type_symbol": "int64"
+        },
+        {
+          "attrs": {
+            "operator": "+"
+          },
+          "id": "n8",
+          "op": "binary",
+          "operands": [
+            "n6",
+            "n7"
+          ],
+          "type_symbol": "int64"
+        },
+        {
+          "attrs": {
+            "function": "to_int64"
+          },
+          "id": "n9",
+          "op": "call",
+          "operands": [
+            "n5"
+          ],
+          "type_symbol": "int64"
+        },
+        {
+          "id": "n10",
+          "label": "next",
+          "op": "select",
+          "operands": [
+            "n4",
+            "n9",
+            "n8"
+          ],
+          "type_symbol": "int64"
+        }
+      ],
+      "state_writes": [
+        {
+          "source_node_id": "n10",
+          "state_name": "count"
+        }
+      ],
+      "trigger": {
+        "clock": "ros",
+        "kind": "timer",
+        "period_ms": 500
+      }
+    }
+  ],
+  "extensions": {},
+  "interface_types": [
+    {
+      "fields": {
+        "data": "int64"
+      },
+      "fixed_size": false,
+      "kind": "msg",
+      "type_symbol": "std_msgs/msg/Int64"
+    },
+    {
+      "kind": "srv",
+      "request": {},
+      "response": {
+        "message": "string",
+        "success": "bool"
+      },
+      "type_symbol": "std_srvs/srv/Trigger"
+    }
+  ],
+  "interfaces": {
+    "publishers": [
+      {
+        "identifier": "count_pub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/demo/count",
+        "type_symbol": "std_msgs/msg/Int64",
+        "zero_copy": false
+      }
+    ],
+    "services": [
+      {
+        "identifier": "reset_srv",
+        "service_name": "/demo/reset",
+        "type_symbol": "std_srvs/srv/Trigger"
+      }
+    ],
+    "subscribers": []
+  },
+  "ir_version": "1.0.0",
+  "node_meta": {
+    "name": "counter_node",
+    "namespace": "/demo",
+    "version": "0.1.0"
+  },
+  "parameter_constraints": [
+    {
+      "message": "step must not exceed limit",
+      "nodes": [
+        {
+          "attrs": {
+            "name": "step"
+          },
+          "id": "n0",
+          "op": "param",
+          "operands": [],
+          "type_symbol": "int64"
+        },
+        {
+          "attrs": {
+            "name": "limit"
+          },
+          "id": "n1",
+          "op": "param",
+          "operands": [],
+          "type_symbol": "int64"
+        },
+        {
+          "attrs": {
+            "operator": "<="
+          },
+          "id": "n2",
+          "op": "binary",
+          "operands": [
+            "n0",
+            "n1"
+          ],
+          "type_symbol": "bool"
+        }
+      ],
+      "root_node_id": "n2"
+    }
+  ],
+  "parameters": [
+    {
+      "canonical_type": "int64",
+      "default_value": 10,
+      "name": "limit",
+      "read_only": false
+    },
+    {
+      "canonical_type": "int64",
+      "default_value": 1,
+      "name": "step",
+      "read_only": false,
+      "validation": {
+        "min": 1
+      }
+    }
+  ],
+  "state_buffers": [
+    {
+      "canonical_type": "int64",
+      "initial_value": 0,
+      "name": "count"
+    }
+  ]
+}

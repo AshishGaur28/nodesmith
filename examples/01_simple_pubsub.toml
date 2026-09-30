@@ -1,0 +1,30 @@
+manifest_version = "1"
+
+[node]
+name = "echo_node"
+namespace = "/demo"
+target_language = "cpp"
+
+[[subscribers]]
+id = "in_sub"
+topic = "/demo/in"
+type = "std_msgs/msg/Float64"
+
+[[publishers]]
+id = "out_pub"
+topic = "/demo/out"
+type = "std_msgs/msg/Float64"
+
+[interfaces."std_msgs/msg/Float64".fields]
+data = "float64"
+
+[[pipelines]]
+name = "echo"
+expressions = ["let doubled = msg.data * 2.0"]
+
+[pipelines.trigger]
+type = "subscriber"
+source = "in_sub"
+
+[pipelines.output_mapping]
+"out_pub.data" = "doubled"

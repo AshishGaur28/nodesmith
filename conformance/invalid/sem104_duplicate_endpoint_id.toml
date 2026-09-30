@@ -1,0 +1,17 @@
+# A duplicate of id "p" (a second publisher).
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[publishers]]
+id = "p"
+topic = "/out"
+type = "std_msgs/msg/Float64"
+
+[[publishers]]
+id = "p"
+topic = "/out2"
+type = "std_msgs/msg/Float64"

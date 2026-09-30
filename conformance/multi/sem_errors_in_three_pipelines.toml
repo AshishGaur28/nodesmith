@@ -1,0 +1,47 @@
+# One error in each of three pipelines: all three are reported, in pipeline order.
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[subscribers]]
+id = "s"
+topic = "/in"
+type = "std_msgs/msg/Float64"
+
+[[publishers]]
+id = "p"
+topic = "/out"
+type = "std_msgs/msg/Float64"
+
+[interfaces."std_msgs/msg/Float64".fields]
+data = "float64"
+
+[[pipelines]]
+name = "a"
+expressions = [
+  "let y = param.nope"
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "s"
+
+[[pipelines]]
+name = "b"
+expressions = [
+  "let y = msg.nope"
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "s"
+
+[[pipelines]]
+name = "c"
+expressions = [
+  "let y = 1 / 0"
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "s"

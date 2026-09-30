@@ -1,0 +1,176 @@
+= SPEC-11: Simulation & Fault Injection Specification
+:status: Draft
+:version: 0.2.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Scope
+
+`SPEC-11` lets a generated node run against a simulated ROS clock and lets a test perturb what a node publishes, so its behaviour can be checked under timing and message faults. The simulator itself (Gazebo, a bag player, a test harness) is external: the framework only makes a node follow its `/clock` and injects faults on the node's own publishers. Hardware, hardware-in-the-loop rigs and device I/O are out of scope for the whole framework.
+
+[text]
+----
+ external simulator / test harness ──► /clock ──► generated node ──► publishers
+                                                     │                  ▲
+                                                     └─ fault injectors ┘   (SPEC-11 §3.2, before publication)
+----
+
+== 2. Manifest Simulation Extensions (`SPEC-01`)
+
+Schema: `$defs/SimulationExtension`.
+
+[source,toml]
+----
+[node]
+name = "command_relay"
+namespace = "/control"
+target_language = "cpp"
+
+[[publishers]]
+id = "cmd_pub"
+topic = "/control/cmd"
+type = "std_msgs/msg/Float64"
+
+[simulation]
+enabled = true
+use_sim_time = true
+clock_topic = "/clock"
+step_mode = "lockstep"   # lockstep | wall_clock | real_time_factor
+# real_time_factor = 0.5 # required when step_mode = "real_time_factor"
+
+[[simulation.fault_injection]]
+target = "cmd_pub"       # a publisher id; applied to its message just before publication
+type = "latency_spike"   # latency_spike | packet_drop | bit_flip | freeze_value
+probability = 0.05
+delay_ms = 50            # required for latency_spike
+seed = 1337              # reproducible runs
+enabled_in_production = false
+----
+
+=== 2.1. Parameter Invariants
+
+* `enabled` (`bool`): Turns on simulation behaviour. An absent block or `false` generates no simulation or fault-injection code.
+* `use_sim_time` (`bool`): Node clocks follow the simulation clock topic instead of wall time. Every `timer` trigger must then use `clock = "ros"` (`SPEC-01` §5.1 rule 3; violations are `ERR_SIM_002`), because `steady` and `system` timers ignore `/clock`.
+* `step_mode` (`enum`):
+** `lockstep`: All timing derives from the simulation clock; callbacks run only as `/clock` advances (§3.1 rule 2).
+** `wall_clock`: Uses local wall-clock timing regardless of the simulator clock rate; requires `use_sim_time = false` (the schema rejects the combination).
+** `real_time_factor`: Scales ticks by `real_time_factor` (required, > 0).
+* `fault_injection[].target` (`identifier`): the publisher whose outgoing message is perturbed. Injection happens after expression evaluation and immediately before publication, and is recorded as `ERR_SIM_101` (§3.1 rule 3).
+* `enabled_in_production` (`bool`, default `false`), on the block and on each `fault_injection` entry: in a `--mode=release` build (`SPEC-04`), `simulation.enabled = true` is rejected unless the block sets it to `true`, and each fault-injection entry is rejected unless that entry sets it to `true` (`SPEC-01` §5.1 rule 4, `ERR_SIM_001`).
+
+== 3. Rules
+
+=== 3.1. Simulation Invariants
+
+1. *Simulated time monotonicity:* when `use_sim_time = true`, time reads MUST NOT regress. If a backward jump occurs (for example a simulation reset), the node catches the clock reset and resets its state (`SPEC-05`), emitting `ERR_SIM_103`.
+2. *Lockstep processing:* in `lockstep` mode all timing derives from the simulation clock topic (timers use the ROS clock, `SPEC-01` §5.1 rule 3), so callbacks fire only when `/clock` advances, and a node does not start the next frame's callbacks before the current one has finished and published. The framework does not implement an acknowledgement back to the simulator; a simulator that requires one supplies its own bridge.
+3. *Fault injection recording (`ERR_SIM_101`, runtime, info):* injection MUST execute after AST evaluation, immediately before the target publisher dispatches (`SPEC-02` §7), and MUST record each injection as a runtime diagnostic (`SPEC-04` §4.5).
+
+=== 3.2. Fault Types
+
+Every type is applied to the named publisher's message immediately before publication, with probability `probability` per publication, using the counter-based generator seeded by `seed` (so runs are reproducible).
+
+[cols="1m,3", options="header"]
+|===
+| type | Effect
+| `latency_spike` | Stalls the calling callback group for `delay_ms` before publishing, modelling a stalled node. Simulation only; not a hard real-time configuration.
+| `packet_drop` | The message is not published.
+| `freeze_value` | The previous message on this publisher is published again instead of the new one (the first message passes through).
+| `bit_flip` | One bit, chosen by the generator, of the message's numeric payload is inverted. Only for message types declared `fixed_size = true` in `[interfaces]` (`SPEC-01` §7); `ERR_SIM_003` otherwise.
+|===
+
+== 4. Target Code Generation (`SPEC-03`)
+
+=== 4.1. C++ (`rclcpp`) Synthesized Simulation Support
+
+[source,cpp]
+----
+// Generated by nodesmith (SPEC-11 / SPEC-03 / SPEC-12). DO NOT EDIT DIRECTLY.
+// Emitted only when simulation.enabled = true. A production build never defines the macro, so this
+// file cannot compile into it (SPEC-01 §5.1 rule 4 rejects it earlier with ERR_SIM_001).
+#ifndef ROS2_DECL_SIMULATION
+#error "simulation code requires ROS2_DECL_SIMULATION; refusing to build it into a production binary"
+#endif
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <memory>
+#include <thread>
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/float64.hpp>
+#include "command_relay/runtime.hpp"
+
+namespace control {
+
+// Counter-based, reproducible pseudo-randomness (splitmix64): no shared generator state, so
+// concurrent pipelines cannot race on it.
+static inline double unit_random(std::uint64_t seed, std::uint64_t n) {
+  std::uint64_t z = seed + n * 0x9E3779B97F4A7C15ULL;
+  z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+  z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+  z ^= z >> 31;
+  return static_cast<double>(z >> 11) * (1.0 / 9007199254740992.0);
+}
+
+// One per simulation.fault_injection entry; applied to that publisher's message just before
+// publication. A latency spike deliberately stalls the calling callback group for delay_ms,
+// which models a stalled node. Simulation is not a hard real-time configuration.
+class LatencySpike {
+public:
+  LatencySpike(double probability, int delay_ms, std::uint64_t seed)
+  : probability_(probability), delay_(delay_ms), seed_(seed) {}
+  bool apply() {
+    if (unit_random(seed_, counter_.fetch_add(1)) >= probability_) return false;
+    std::this_thread::sleep_for(delay_);
+    return true;
+  }
+private:
+  double probability_;
+  std::chrono::milliseconds delay_;
+  std::uint64_t seed_;
+  std::atomic<std::uint64_t> counter_{0};
+};
+
+class CommandRelayNode : public rclcpp::Node {
+public:
+  explicit CommandRelayNode(const rclcpp::NodeOptions & options)
+  // rclcpp declares use_sim_time itself, so it is overridden here and never declared again.
+  : Node("command_relay", "/control",
+         rclcpp::NodeOptions(options).append_parameter_override("use_sim_time", true)),
+    cmd_latency_(/*probability=*/0.05, /*delay_ms=*/50, /*seed=*/1337) {
+    cmd_pub_ = create_publisher<std_msgs::msg::Float64>("/control/cmd", rclcpp::QoS(10));
+    gate_.open();
+  }
+
+  // SPEC-02 §7 step 5 for publisher `cmd_pub`, fault injection applied last.
+  void publish_cmd(double value) {
+    if (cmd_latency_.apply()) {
+      diag_.report(r2d::Code::ERR_SIM_101, "cmd_pub latency_spike");
+    }
+    std_msgs::msg::Float64 msg;
+    msg.data = value;
+    cmd_pub_->publish(msg);
+  }
+
+private:
+  LatencySpike cmd_latency_;
+  r2d::RunGate gate_;
+  r2d::DiagRing diag_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr cmd_pub_;
+};
+
+}  // namespace control
+----
+
+*Unverified against a ROS distribution (check before templating):* `NodeOptions::append_parameter_override`, and that timers created with the node clock (`rclcpp::create_timer`) follow `/clock` when `use_sim_time` is true. The fault injector and `unit_random` core is compiled and stress-tested.
+
+=== 4.2. Language Support
+
+Only C++ has a reference snippet. Python can implement the same clock override and injectors; those bindings are unverified.
+
+== 5. Diagnostics (`SPEC-04`)
+
+1. *Production build audit (`ERR_SIM_001`):* `nodesmith` verifies that `simulation.enabled` and `simulation.fault_injection` are disabled or absent when building with `--mode=release`.
+2. *Clock skew (`ERR_SIM_102`, runtime):* diagnostics track skew between published simulated clock updates and the expected step interval and warn when lockstep skew exceeds tolerance.

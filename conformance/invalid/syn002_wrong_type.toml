@@ -1,0 +1,10 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[state_variables.x]
+type = "float"
+initial_value = 0

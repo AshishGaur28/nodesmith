@@ -1,0 +1,12 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[parameters.k]
+type = "float64"
+default = 5.0
+[parameters.k.validation]
+max = 1.0

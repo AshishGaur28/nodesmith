@@ -1,0 +1,36 @@
+{
+  "bad_numbers_all_reported.toml": [
+    "ERR_SYN_001",
+    "ERR_SYN_001"
+  ],
+  "concurrency_skipped_when_a_pipeline_failed.toml": [
+    "ERR_SEM_101"
+  ],
+  "failed_let_does_not_cascade.toml": [
+    "ERR_SEM_101"
+  ],
+  "rules_and_semantics_together.toml": [
+    "ERR_SHM_001",
+    "ERR_SEM_114",
+    "ERR_SEM_101"
+  ],
+  "schema_errors_all_reported.toml": [
+    "ERR_SYN_002",
+    "ERR_SYN_002",
+    "ERR_SYN_002"
+  ],
+  "sem_errors_in_three_pipelines.toml": [
+    "ERR_SEM_101",
+    "ERR_SEM_107",
+    "ERR_SEM_109"
+  ],
+  "several_concurrency_errors.toml": [
+    "ERR_CNC_201",
+    "ERR_CNC_201"
+  ],
+  "yaml_merge_key_reports_anchor_alias_and_merge.yaml": [
+    "ERR_SYN_001",
+    "ERR_SYN_001",
+    "ERR_SYN_001"
+  ]
+}

@@ -1,0 +1,21 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[publishers]]
+id = "p"
+topic = "/out"
+type = "std_msgs/msg/Float64"
+zero_copy = true
+
+[interfaces."std_msgs/msg/Float64"]
+[interfaces."std_msgs/msg/Float64".fields]
+data = "float64"
+
+[shared_memory]
+enabled = true
+segment_size_bytes = 1024
+max_loaned_messages = 4

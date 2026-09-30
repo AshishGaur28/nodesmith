@@ -1,0 +1,16 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-09-30T18:00:00Z" },
+  "title": "Nodesmith: Architecture",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1760, "h": 1112, "title": "System architecture" },
+    "Runtime.dc.html": { "x": 1840, "y": 0, "w": 1920, "h": 912, "title": "Runtime model" },
+    "Manifest.dc.html": { "x": 1840, "y": 1032, "w": 1660, "h": 1396, "title": "Manifest snapshot" },
+    "SpecMap.dc.html": { "x": 0, "y": 1232, "w": 1760, "h": 1560, "title": "Spec map" }
+  },
+  "order": ["Main.dc.html", "Runtime.dc.html", "Manifest.dc.html", "SpecMap.dc.html"],
+  "notes": {},
+  "designSystems": []
+}

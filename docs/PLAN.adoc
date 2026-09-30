@@ -1,0 +1,86 @@
+= Implementation Plan
+:toc:
+
+Scope: everything up to and including generation. Deployment, benchmark running and CI are out (see `specs/INDEX.adoc`).
+
+The order follows one rule: nothing is built on a config surface that can still change. The manifest is finalised first (M0). The toolchain stages then follow in pipeline order.
+
+== M0. Finalise the config (manifest and IR contract)
+
+Goal: `manifest_version = "1"` is frozen. After M0, a change to the manifest schema is a version bump, not an edit.
+
+Work:
+
+. *Pin the target.* Decided: ROS 2 Jazzy, with its default RMW. The manifest has no RMW field and generated code uses only client-library APIs, so the RMW becomes configurable in a later phase without a manifest change. Rust is deferred to a later release. The RMW is chosen at generation time (`node.rmw`, only `fastrtps` in v1) and the package is generated for that RMW alone (`SPEC-03` §2.1). Every "Unverified against a ROS distribution" note in SPEC-03 and 05-11 depends on it, and it decides which manifest fields are valid (loaned messages, lifecycle for `rclpy`).
+. *Per-language feature support.* Decided: in v1 C++ supports every block and Python supports the core blocks and `concurrency` only; an enabled extension block with a Python target is `ERR_SEM_114`. Python extensions are the first work after v1. Rust is not a target.
+. *Review each manifest block against real use.* Walk all eight examples (`07` service-heavy and `08` startup/subscriber/timer were added for this review) and, ideally, one node written by someone other than the spec author. Every field that was needed but missing, or present but never used, is resolved now.
+. *Freeze the format.* TOML, YAML and JSON must produce the same IR hash for the same content. Decided in SPEC-01 §2: no YAML anchors, aliases or merge keys, no duplicate keys, JSON number grammar only, unknown keys rejected except `x-` keys.
+. *Freeze the schemas.* `node_manifest.schema.json` and `node_ir.schema.json` get a version tag. The error registry (46 codes) is closed except for additions.
+. *Build the conformance corpus.* Valid manifests with expected IR JSON and hash, and invalid manifests with the expected error code. Start from the 6 examples and the 28 negative cases already written. This corpus is the test suite for every later milestone.
+
+Exit: `python conformance/verify.py` passes, the decisions in items 1 and 2 are written into SPEC-01/SPEC-03/INDEX, and `SPEC-00`, `SPEC-01`, `SPEC-02`, both schemas and the registry are Frozen (`specs/INDEX.adoc` §7).
+
+Status: *done.* The corpus is `conformance/` (8 valid manifests with expected IR and hash, 4 format-parity copies, 56 invalid cases covering every manifest-triggerable build code). Building it found and fixed eight spec gaps; see the M0 record below.
+
+=== M0 record: gaps found while building the corpus
+
+. `ERR_SEM_101` and `ERR_SEM_103` overlapped. Now: 103 only for a local that references itself; a local used before its `let` is 101.
+. `ERR_SHM_003` used an undefined `sizeof(message)`. Now: the sum of declared leaf field sizes, a stated lower bound.
+. `middleware_backend = "iceoryx"` cannot work with the `fastrtps` RMW (example 04 and SPEC-06 used it). Now `ERR_SHM_001`, with a per-RMW backend table in `SPEC-03` §2.1.
+. `ERR_SIM_001` had no block-level flag to satisfy. Now `simulation.enabled_in_production`.
+. `ERR_SEC_303` named no restricted topics. Now a listed set in `SPEC-08` §5.
+. `ERR_SEC_304` was unreachable as written (allow = true is permitted). Now: allow and deny for the same topic, or a deny that removes nothing.
+. `ERR_SEC_302` was listed as build time but described a runtime keystore check. Now an enclave-syntax and permissions-XML check; the keystore check is the runtime `ERR_SEC_101`.
+. Two embedded spec manifests were not valid (missing `[interfaces]`), and the manifest schema cited a nonexistent `SPEC-13`.
+
+== M1. Front end: ingestion to IR
+
+Ingestion, schema check, lowering to the IR, canonical form and hashing (SPEC-00, 01, 02, 04).
+The dry-run prototype (73 checks) is the starting point.
+
+Exit: every valid corpus manifest lowers to the expected IR and hash in all three input formats. Every invalid one fails with the expected code and exit status.
+
+Status: *done* (`src/nodesmith/`: `ingest`, `schema`, `rules`, `expr`, `lower`, `canonical`, `compiler`, `cli`). `nodesmith validate` and `lower` pass the whole corpus (`pytest`, 102 tests), independently of the reference in `conformance/reference/`. `validate` reports every error it can find, following the recovery rules of `SPEC-04` §3 (`conformance/multi/`). Lowering needs the semantic checks and callback-group assignment, so those were built here too; M2 is therefore hardening, not a first implementation.
+
+== M2. Semantic pass
+
+References, types, expression type-checking, parameter constraints, the conflict graph and callback-group derivation (SPEC-02, 12).
+
+Already in place from M1: symbol and type checks, reference and interface checks, and the SPEC-12 §3 grouping. Remaining for M2: source positions (file, line, column) in diagnostics and the text rendering of SPEC-04 §4.4, more corpus cases per code (each currently has one or two), property tests for the grouping algorithm, and the `nodesmith validate` output for `--format=json` checked against the §4.4 schema.
+
+Exit: each semantic error code has several cases, callback-group assignment matches hand-computed results for the examples, and diagnostics carry positions.
+
+== M3. C++ synthesis (core)
+
+CI: `.github/workflows/ci.yml` already runs the front-end checks and the ThreadSanitizer test on every push. M3 adds a `jazzy` job (container `ros:jazzy` on an `ubuntu-24.04` runner) that generates the examples and builds them with `colcon`. Nothing needs a local ROS installation.
+
+Synthesis and atomic emission for node, parameters, state, pub/sub, services and pipelines, plus the runtime library (`SnapshotRing`, `RunGate`).
+Compile and run the output against the pinned distribution.
+
+Exit: examples 01-03 generate, build with `colcon`, and behave as SPEC-02 §7 specifies when driven with test messages. This closes the ROS-side "unverified" notes for SPEC-03.
+
+== M4. C++ extensions
+
+Lifecycle, dynamic parameters, security, telemetry probes, real-time, shared memory, and simulation and fault injection (SPEC-05 to 11), one at a time.
+
+Exit: examples 04-06 build and pass their behavioural checks. Each SPEC "Unverified" note is either confirmed or corrected in the spec.
+
+== M5. Python target (core)
+
+Core first, then the extensions M0 marked as supported for Python.
+
+Exit: the same behavioural checks as M3 and M4 pass for the supported feature set of Python.
+
+== M6. Golden files and hardening (v1 release)
+
+Generated-output golden tests keyed on the IR hash, determinism across machines, error-message quality, and the `bench` driver-source generation (SPEC-09).
+
+Exit: two clean machines produce byte-identical output for every corpus manifest.
+
+== M7. Python extensions (immediately after v1)
+
+Lifecycle, dynamic parameters and simulation first (once verified on Jazzy), then the rest, each removing its `ERR_SEM_114` case.
+
+== Not planned
+
+Rust target (deferred), a configurable RMW (next phase), `frontend/` (no spec), deployment, CI, and any hardware integration.

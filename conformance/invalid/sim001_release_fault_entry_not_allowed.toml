@@ -1,0 +1,27 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[subscribers]]
+id = "s"
+topic = "/in"
+type = "std_msgs/msg/Float64"
+
+[[publishers]]
+id = "p"
+topic = "/out"
+type = "std_msgs/msg/Float64"
+
+[interfaces."std_msgs/msg/Float64".fields]
+data = "float64"
+
+[simulation]
+enabled = true
+enabled_in_production = true
+[[simulation.fault_injection]]
+target = "p"
+type = "freeze_value"
+probability = 0.1

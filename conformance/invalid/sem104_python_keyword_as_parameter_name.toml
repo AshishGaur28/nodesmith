@@ -1,0 +1,11 @@
+# "lambda" is a Python keyword, and a supported target is enough to reserve it.
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[parameters.lambda]
+type = "float64"
+default = 1.0

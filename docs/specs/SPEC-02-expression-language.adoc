@@ -1,0 +1,173 @@
+= SPEC-02: Expression Language & Pipeline Execution Semantics
+:status: Frozen
+:version: 1.0.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Scope
+
+`SPEC-02` defines the statement/expression language used in `[[pipelines]].expressions` and `output_mapping` (`SPEC-01`), its type system, the built-in function library, and the exact per-trigger execution semantics. Expressions are static, deterministic, side-effect-free (apart from declared `state.` writes) and verifiable at compile time; there is no raw code injection.
+
+The manifest carries this language as strings. Lowering (`SPEC-00` Stage 3) turns each pipeline into an `IRExecutionDAG` (`schemas/node_ir.schema.json`).
+
+== 2. Type System
+
+=== 2.1. Canonical types
+
+One set is used by the manifest (`SPEC-01`), the IR (`SPEC-00`), and the generators (`SPEC-03`):
+
+`bool`, `int32`, `int64`, `float32`, `float64`, `string`, `bytes`, and homogeneous arrays `T[]` of any scalar except `bytes`.
+
+Message and service fields are declared in the manifest (`SPEC-01` §7) with ROS primitive types, which map onto the canonical types: `bool` → `bool`; `byte`, `char`, `int8`, `uint8`, `int16`, `uint16`, `int32` → `int32`; `uint32`, `int64`, `uint64` → `int64` (a `uint64` above `INT64_MAX` is a numeric fault on read); `float32`, `float64` as themselves; `string` → `string`; `time` and `duration` → `float64` seconds; `byte[]` and `uint8[]` → `bytes`; every other `T[]` → the canonical `T[]`. Nested messages are addressed by leaf field paths, never as values; fixed and bounded arrays are `T[]`.
+
+Writing into a declared field whose ROS type is narrower than its canonical type (`int8`, `uint8`, `int16`, `uint16`, `uint32`, `uint64`) checks the range at run time; an out-of-range value is a numeric fault (§6).
+
+=== 2.2. Implicit widening
+
+Implicit conversion is allowed only along this lattice and only where the target sink or operator needs it:
+
+[cols="1m,3", options="header"]
+|===
+| From | Implicitly widens to
+| `int32` | `int64`, `float64`
+| `float32` | `float64`
+| `int64` | `float64` (values above 2^53 lose precision; use `to_float64` to make it explicit)
+|===
+
+The common type of a binary arithmetic or comparison operator is the least upper bound in that lattice: `int32+int32`→`int32`, `int32+int64`→`int64`, any integer with any float→`float64`, `float32+float32`→`float32`. Everything else (including any narrowing, and `bool`/`string` mixed with numbers) is `ERR_SEM_102` unless an explicit `to_*` function is used.
+
+Numeric literals adapt to their sink: an integer literal is `int32` if it fits, otherwise `int64`; a float literal is `float64`. A literal assigned to a narrower sink of the same kind (`int32`, `float32`) is accepted if it is representable (integers) or in range (floats).
+
+== 3. Statement & Expression Grammar (EBNF)
+
+Each entry of `expressions` is exactly one statement. Statements execute strictly in listed order.
+
+[source,ebnf]
+----
+Statement      = LetStmt | StateAssign ;
+LetStmt        = "let" , Name , "=" , Expression ;
+StateAssign    = "state" , "." , Name , "=" , Expression ;
+
+Expression     = Ternary ;
+Ternary        = LogicalOr , [ "?" , Expression , ":" , Expression ] ;
+LogicalOr      = LogicalAnd , { "||" , LogicalAnd } ;
+LogicalAnd     = Equality , { "&&" , Equality } ;
+Equality       = Relational , { ( "==" | "!=" ) , Relational } ;
+Relational     = Additive , { ( "<" | "<=" | ">" | ">=" ) , Additive } ;
+Additive       = Multiplicative , { ( "+" | "-" ) , Multiplicative } ;
+Multiplicative = Unary , { ( "*" | "/" | "%" ) , Unary } ;
+Unary          = ( "!" | "-" ) , Unary | Postfix ;
+Postfix        = Primary , { "[" , Expression , "]" } ;
+Primary        = Literal | Reference | Call | "(" , Expression , ")" ;
+
+Call           = Name , "(" , [ Expression , { "," , Expression } ] , ")" ;
+Reference      = Root , { "." , Name }          (* param.x  msg.a.b  req.a  state.x *)
+               | Name ;                          (* local defined by an earlier let *)
+Root           = "param" | "msg" | "req" | "state" ;
+
+Name           = ( ALPHA | "_" ) , { ALPHA | DIGIT | "_" } ;
+Literal        = FloatLit | IntLit | BoolLit | StringLit ;
+FloatLit       = DIGIT , { DIGIT } , "." , DIGIT , { DIGIT } , [ ( "e" | "E" ) , [ "+" | "-" ] , DIGIT , { DIGIT } ] ;
+IntLit         = DIGIT , { DIGIT } ;
+BoolLit        = "true" | "false" ;
+StringLit      = '"' , { ? any char except '"' and '\' ? | '\"' | '\\' | '\n' } , '"' ;
+----
+
+Notes:
+
+* Reference roots use a dot (`param.alpha`), not a colon. `let`, `state`, `param`, `msg`, `req`, `res`, `true`, `false` and built-in function names are reserved and cannot be used as local names or manifest identifiers (`ERR_SEM_104`).
+* `&&` and `||` short-circuit; the ternary evaluates only the selected branch. Precedence is as listed, lowest first; `?:` is right-associative.
+* `%` is defined only for integers. There is no string concatenation (so no runtime allocation); strings come from literals, parameters, state, or message fields, and can be compared with `==`/`!=` or selected with `?:`.
+* Array element access `a[i]` requires an integer index; out-of-range is a numeric fault (§6). `len(a)` gives the length.
+
+== 4. Name Binding
+
+[cols="1m,3", options="header"]
+|===
+| Reference | Meaning
+| `param.<name>` | Value of a declared parameter in the snapshot taken at the start of the execution (`SPEC-07`, `SPEC-12` §5).
+| `msg.<path>` | Field of the trigger's message. Valid only when the trigger is a `subscriber`.
+| `req.<path>` | Field of the service request. Valid only when the trigger is a `service`.
+| `state.<name>` | Value of a declared `state_variables` entry as committed before this execution started.
+| `<name>` | A local bound by an earlier `let` in the same pipeline.
+|===
+
+A pipeline sees only its own trigger's input. Data from another subscriber is passed between pipelines only via `state_variables`.
+
+Rules (each violation is a compile error): a local is defined once and used only after its `let` (`ERR_SEM_101` for a local used before its `let`, including a reference to a local defined later; `ERR_SEM_103` only for a local that references itself in its own definition, e.g. `let y = y + 1.0`); a `state.<name>` may be assigned at most once per pipeline (`ERR_SEM_104`); `msg.`/`req.` used with the wrong trigger type is `ERR_SEM_108`; unknown parameter, state variable, local or function is `ERR_SEM_101`; a message or service field that is not declared under `interfaces` is `ERR_SEM_107`.
+
+== 5. Built-in Functions
+
+All are pure and allocation-free. `T` is any numeric type; a result is widened per §2.2.
+
+[cols="1m,1m,3", options="header"]
+|===
+| Signature | Result | Description
+| `abs(x)` | `T` | Absolute value.
+| `min(a, b)` / `max(a, b)` | common type | Smaller / larger of two numbers.
+| `clamp(v, lo, hi)` | common type | `min(max(v, lo), hi)`; `lo > hi` is a numeric fault.
+| `sqrt(x)` / `sin(x)` / `cos(x)` | `float64` | Standard math (radians); `sqrt` of a negative is a numeric fault.
+| `pow(x, y)` | `float64` | `x` to the power `y`.
+| `low_pass(curr, prev, alpha)` | `float64` | `prev + alpha * (curr - prev)`; `alpha` outside `[0,1]` is a numeric fault.
+| `deadband(x, threshold)` | `float64` | `0.0` if `abs(x) < threshold`, else `x`.
+| `rate_limit(target, prev, rise_per_s, fall_per_s)` | `float64` | Moves from `prev` toward `target` by at most `rise_per_s * dt_sec()` upward or `fall_per_s * dt_sec()` downward (`fall_per_s` is a positive magnitude).
+| `len(a)` | `int64` | Array or `bytes`/`string` length.
+| `to_int32(x)` / `to_int64(x)` | int | Explicit numeric conversion; float→int truncates toward zero; out-of-range is a numeric fault.
+| `to_float32(x)` / `to_float64(x)` | float | Explicit numeric conversion.
+| `now_sec()` | `float64` | Time on the trigger's clock (`steady`/`system`/`ros`; `steady` for non-timer triggers). Evaluated once per execution, so every call in one execution returns the same value.
+| `dt_sec()` | `float64` | Seconds since the previous execution of this pipeline on that clock; `0.0` on the first execution.
+|===
+
+The former block-style filters map onto these: a low-pass filter is `low_pass(x, state.prev, param.alpha)` with `state.prev` updated; a deadband is `deadband(...)`; a rate limiter is `rate_limit(...)` with its previous output held in state. Use `let k = 6.283185307179586 * param.cutoff_hz * dt_sec()` and `let alpha = k / (k + 1.0)` for a cutoff-frequency (rather than fixed-alpha) filter.
+
+Reproducibility: apart from `now_sec()`/`dt_sec()`, evaluation is a pure function of the trigger input, parameters and state. Test harnesses substitute a fake clock.
+
+== 6. Numeric Semantics & Faults
+
+* Integer `+ - *` wrap in two's complement of the operand width (defined identically on all targets). Integer `/` truncates toward zero; `%` takes the sign of the dividend.
+* Float operations follow IEEE 754 and may produce NaN/Inf internally.
+* A *numeric fault* occurs when: integer division or `%` by zero, `INT_MIN / -1`, array index out of range, a conversion out of range, or any built-in fault listed in §5, or a value out of range for its declared ROS sink type (§2.1), or a NaN/Inf reaching a sink (a `state.` write or a message field).
+* Constant division by zero (both operands literal) is rejected at compile time (`ERR_SEM_109`).
+* On a numeric fault the current execution is aborted: no state is committed, nothing is published, and a fault event is raised (§7 step 6).
+
+== 7. Pipeline Execution Semantics (behaviour of the generated node)
+
+Every execution of a pipeline (one trigger firing) runs these steps in order. Generators MUST implement exactly this observable behaviour on all targets.
+
+1. *Snapshot inputs.* `msg`/`req` are an immutable snapshot; `state.` reads see the values committed before this execution began; `param.` reads use one parameter snapshot taken now for the whole execution (`SPEC-12` §5); `now_sec()` is sampled once.
+2. *Evaluate* `expressions` in listed order.
+3. *Stage state writes.* Assignments to `state.` are staged; they are not visible to later statements in the same execution.
+4. *Check.* If any numeric fault occurred, go to step 6.
+5. *Commit and emit.* Commit all staged state writes atomically with respect to other pipelines (guaranteed by callback-group exclusion, `SPEC-12` §4). Then, for each publisher (or `res`) named in `output_mapping`, in ascending lexicographic order of its id: create a value-initialised message (numeric 0, `false`, empty string/array, nested messages likewise), assign the mapped fields, and publish once (for a service, return the response). Fields not mentioned in `output_mapping` keep their defaults; no header stamp is filled in automatically.
+6. *Fault.* No state change, no publication (a service returns the ROS default-initialised response and logs the fault). The fault is reported as runtime diagnostic `ERR_RUN_101`, increments the pipeline's fault counter, and is escalated through the node's error path (`SPEC-05` for lifecycle nodes; a logged diagnostic otherwise).
+
+A given pipeline never runs concurrently with itself, except a stateless pipeline explicitly placed in a `Reentrant` callback group (`SPEC-12` §3.2). Timer pipelines skip a firing if the previous execution has not finished (`ERR_RUN_102`). `startup` pipelines run once after the node becomes operational (`on_activate` for lifecycle nodes, end of construction otherwise) and again after every re-activation.
+
+`output_mapping` values are ordinary expressions (`SPEC-02` §3 `Expression`), so a bare local name (`"z"`) and a full expression (`"over ? \"OVERLIMIT\" : \"OK\""`) are both valid. Two mappings to the same target path are `ERR_SEM_104`; a mapping to an unknown publisher or field is `ERR_SEM_105`/`ERR_SEM_107`.
+
+== 8. Semantic Validation Invariants
+
+1. *Static resolution:* every reference resolves per §4 (`ERR_SEM_101`).
+2. *Types:* every operator, call and sink type-checks per §2 (`ERR_SEM_102`).
+3. *Acyclic:* the lowered DAG is acyclic by construction; forward or self references are `ERR_SEM_103`.
+4. *Numeric safety:* constant division by zero is `ERR_SEM_109`; everything else is handled at run time by §6.
+5. *Message fields:* every field path must be a declared leaf of its type and takes its declared type (`SPEC-01` §7; `ERR_SEM_107`, `ERR_SEM_102`).
+6. *Parameter constraints:* the `parameter_constraints` expressions (`SPEC-01` §5) use this same language, but only `param.` references are allowed and they must be `bool`.
+
+== 9. Worked Example
+
+`examples/02_filter_pipeline.toml`, pipeline `filter_imu`:
+
+[source,text]
+----
+let z    = low_pass(msg.linear_acceleration.z, state.prev_z, param.alpha)
+let over = abs(z) > param.max_accel
+state.prev_z = z                                  (staged, committed at step 5)
+output: filtered_imu_pub.linear_acceleration.z = z
+        filtered_imu_pub.header.frame_id       = msg.header.frame_id
+        status_pub.data                        = over ? "OVERLIMIT" : "OK"
+----
+
+Publication order is `filtered_imu_pub` then `status_pub` (lexicographic).

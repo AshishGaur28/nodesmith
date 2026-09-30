@@ -1,0 +1,5 @@
+manifest_version: "1"
+node: &n
+  name: t
+  namespace: /
+  target_language: cpp

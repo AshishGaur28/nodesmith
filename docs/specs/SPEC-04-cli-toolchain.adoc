@@ -1,0 +1,286 @@
+= SPEC-04: Toolchain CLI & Validation Specification
+:status: Draft
+:version: 0.1.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Executive Summary & Scope
+
+`SPEC-04` specifies the command-line interface toolchain (`nodesmith`), static validation engine, diagnostic error reporting format and lowering triggers for the Nodesmith. The toolchain ends at generated source files.
+
+The toolchain acts as the primary operational bridge between the declarative manifests defined in `SPEC-01`, the expression AST lowering rules in `SPEC-02`, code synthesis generators in `SPEC-03`, and the runtime rules of `SPEC-05`–`SPEC-12` that the generated code must obey.
+
+[text]
+----
+┌────────────────────────────────────────────────────────────────────────┐
+│                   SPEC-01 Manifest Input (*.toml)                      │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                        `nodesmith` CLI Toolchain                        │
+│ ┌──────────────────────┐ ┌──────────────────────┐ ┌──────────────────┐ │
+│ │ Static Validation    │ │ Lowering (SPEC-00/02)│ │ Code Synthesizer │ │
+│ │ Engine (SPEC-04)     │ │                      │ │ (SPEC-03)        │ │
+│ └──────────┬───────────┘ └──────────┬───────────┘ └────────┬─────────┘ │
+└────────────┼────────────────────────┼──────────────────────┼───────────┘
+             │                        │                      │
+             ▼                        ▼                      ▼
+┌────────────────────────┐┌──────────────────────┐┌──────────────────────┐
+│ Diagnostic Console /   ││ Lowered Language-    ││ Concrete Target Code │
+│ Machine JSON (SPEC-04) ││ Agnostic IR (SPEC-00)││ (C++, Python)  │
+└────────────────────────┘└──────────────────────┘└──────────────────────┘
+----
+
+== 2. Command Line Interface Design (`nodesmith`)
+
+The CLI executable `nodesmith` provides a uniform operational interface for manifest validation, IR generation, target synthesis and benchmark-driver generation.
+
+=== 2.1. Global Command Structure & Flags
+
+[source,text]
+----
+nodesmith [GLOBAL_FLAGS] <SUBCOMMAND> [SUBCOMMAND_FLAGS]
+----
+
+==== Global Flags
+
+* `-h, --help`: Displays help text and subcommand usage.
+* `-V, --version`: Prints `nodesmith` version and build commit hash.
+* `-v, --verbose`: Enables verbose log output to `stderr`.
+* `-q, --quiet`: Suppresses informational logs; outputs only diagnostics and errors.
+* `--format <FORMAT>`: Sets diagnostic output format. Options: `text` (default), `json`.
+* `--mode <MODE>`: Build mode, `debug` (default) or `release`. `release` sets the generated CMake default build type to `Release` (`RelWithDebInfo` otherwise) and enables the production check of `SPEC-01` §5.1 rule 4 (no simulation or fault injection).
+
+=== 2.2. CLI Subcommand Registry
+
+[cols="1m,2,3", options="header"]
+|===
+| Subcommand | Purpose | Key Flag Arguments
+
+| `validate`
+| Performs schema, AST semantic, and runtime concurrency validation.
+| `--manifest <PATH>`, `--strict`
+
+| `lower`
+| Lowers a TOML manifest into a language-agnostic Intermediate Representation (IR) JSON file (`SPEC-02`).
+| `--manifest <PATH>`, `--output <PATH>`
+
+| `generate`
+| Synthesizes target source code (`rclcpp`, `rclpy`) from manifest.
+| `--manifest <PATH>`, `--target-language <LANG>`, `--rmw <NAME>`, `--output-dir <PATH>`
+
+| `bench`
+| Generates benchmark drivers for `telemetry.benchmarks` (`SPEC-09` §5). Builds and runs nothing.
+| `--manifest <PATH>`, `--output-dir <PATH>`
+
+| `clean`
+| Cleans synthesized build artifacts and temporary AST lowered files.
+| `--manifest <PATH>`
+|===
+
+=== 2.3. Invocation Examples
+
+[source,bash]
+----
+# Validate node manifest strictly with JSON diagnostic output
+nodesmith --format=json validate --manifest config/imu_filter.toml --strict
+
+# Lower manifest to AST IR representation
+nodesmith lower --manifest config/imu_filter.toml --output build/imu_filter.ir.json
+
+# Synthesize C++ rclcpp node implementation
+nodesmith generate \
+  --manifest config/imu_filter.toml \
+  --target-language cpp \
+  --output-dir src/imu_filter_node/
+----
+
+== 3. Static Validation Engine Rules
+
+Every command that reads a manifest runs the gates it needs, in order: `validate` runs Gates 1–3; `lower` runs Gates 1–3 and writes the IR; `generate` and `bench` run Gates 1–3 and then write their files. A run reports every error it can find, so that a user fixes a manifest in one pass, and writes nothing unless there are none. Warnings never stop a run, and with `--strict` every warning is reported as an error.
+
+*Error recovery rules* (they keep the list complete without adding false errors):
+
+1. *Gate 1 stops the run.* Everything it finds is reported: all schema violations (`ERR_SYN_002`), or all format-rule violations (`ERR_SYN_001`: number forms, anchors, nulls, date-times). Later gates do not run, because they would work on a document that cannot be trusted. A document that cannot be parsed at all yields that one error. A syntax error (`ERR_SYN_001`) also skips the schema check of that run, since it would only restate it.
+2. *Gates 2 and 3 report every error.* Each independent check is run even if another failed: each cross-block rule and each endpoint, parameter, constraint, interface declaration, pipeline statement and output target is checked on its own, and reports at most one error (its first).
+3. *No cascades.* A `let` whose definition failed is reported once; its later uses add no further error. An error that follows from another already reported (for example an unknown `callback_group` when the `realtime` block is absent, `ERR_RT_002`) is not reported again.
+4. *Gate 3 needs clean pipelines.* The callback-group check (`ERR_CNC_201`) uses every pipeline's state access, so it runs only when no pipeline had an error.
+5. *Order and exit status.* Diagnostics are emitted in a fixed order: Gate 1; the cross-block rules in `SPEC-01` §5.1 order; then Gate 2 in manifest order (identifiers, interface declarations, parameters, constraints, pipelines in file order, services) and Gate 3. The exit status is that of the first error (§4.2), so the same manifest always gives the same list and status.
+
+=== 3.1. Gate 1: Schema Verification
+
+Validates the TOML node manifest structure against `schemas/node_manifest.schema.json` using Draft 2020-12 validation rules:
+
+1. **Parsing:** TOML, YAML 1.2 or JSON input under the parity rules of `SPEC-01` §2 (`ERR_SYN_001`).
+2. **Structure:** required keys, key names, value types and the conditional rules of the schema, including the canonical type strings (`bool`, `int32`, `int64`, `float32`, `float64`, `string`, `bytes`, and `T[]`) (`ERR_SYN_002`). Whether a default *value* matches its declared type is checked in Gate 2 (`ERR_SEM_102`).
+3. **Extension Protection:** Validates the optional `[lifecycle]`, `[shared_memory]`, `[security]`, `[telemetry]`, `[realtime]`, `[simulation]` and `[concurrency]` blocks against their `$defs` in the same schema, then the cross-block rules of `SPEC-01` §5.1 (including target support, `ERR_SEM_114`). Any unknown key is a schema error unless it starts with `x-` (`SPEC-01` §2).
+
+=== 3.2. Gate 2: Semantic & AST Lowering Verification
+
+Executes semantic analysis on expression strings defined in `SPEC-02`:
+
+1. **Symbol Resolution:** Ensures every variable inside expressions resolves to a valid parameter (`param.x`), input message field (`msg.y`), state variable (`state.z`), or numeric literal.
+2. **Type Safety:** Verifies type compatibility across operator nodes in the expression DAG.
+3. **Acyclic Check:** Verifies that no local is used before or within its own definition (`ERR_SEM_103`).
+4. **References and Interfaces:** the cross-reference rules of `SPEC-01` §6, field paths and types against the manifest's `[interfaces]` declarations (`SPEC-01` §7; `ERR_SEM_107`, `ERR_SEM_112`, warning `ERR_SEM_113`), and parameter defaults against their `validation` and `parameter_constraints` (`ERR_SEM_106`).
+
+=== 3.3. Gate 3: Concurrency & Runtime Integrity (`SPEC-12`)
+
+Runs the callback-group assignment algorithm (`SPEC-12` §3) on every build and rejects:
+
+1. **Unsafe group assignment:** pipelines that share state but are placed in different groups, a stateful pipeline in a `Reentrant` group, or a conflict component that names several groups (`ERR_CNC_201`).
+
+The resulting assignment is written into the IR (`nodesmith lower`).
+
+== 4. Unified Error Code Matrix & Exit Status Registry
+
+This is the single registry of every diagnostic code in the suite. Other specs cite codes from here; they never define their own.
+
+=== 4.1. Registry Rules
+
+1. Format: `ERR_[A-Z]{2,3}_[0-9]{3}`. The two or three letters are the *category*; numbers are unique within a category.
+2. A code has exactly one meaning, one kind and one default severity. Codes are never reused or renumbered; a retired code stays reserved. (A code removed before any release is simply deleted.)
+3. *Kind* `build` codes are emitted by `nodesmith` and appear in its diagnostic output (§4.4) and drive the process exit status. *Kind* `runtime` codes are emitted by generated nodes (§4.5) and never affect `nodesmith` exit status.
+4. Numbering convention (not a rule for consumers): `build` codes use the low numbers of a category; `runtime` codes use `1xx` in categories that have both (`RUN`, `LCY`, `PRF`, `SEC`, `SHM`, `RT`, `SIM`).
+5. A warning has severity `warning` and is promoted to an error by `--strict`; its exit status is then that of its category (§4.3).
+6. Adding a code means adding it here, in the same change as the spec text that emits it.
+
+=== 4.2. Process Exit Status Codes
+
+`nodesmith` MUST return these exit codes to the calling shell or script. The exit status is that of the first error diagnostic emitted; the validation gates (§3) and pipeline stages run in a fixed order, so the result is deterministic. Warnings alone yield `0`.
+
+[cols="1m,1m,2,3", options="header"]
+|===
+| Exit Code | Constant Name | Description | Categories
+| `0` | `EXIT_SUCCESS` | Completed; only warnings (if any). | —
+| `1` | `EXIT_GENERIC_ERROR` | I/O failure, missing path, template crash, internal error. | (no diagnostic code)
+| `2` | `EXIT_CLI_USAGE_ERROR` | Bad flags, missing `--manifest`, unknown subcommand. | (no diagnostic code)
+| `3` | `EXIT_MANIFEST_INVALID` | Manifest syntax or schema violation. | `SYN`
+| `4` | `EXIT_SEMANTIC_INVALID` | Reference, type, expression or DAG error. | `SEM`
+| `5` | `EXIT_CONCURRENCY_INVALID` | Thread-safety / callback-group violation. | `CNC`
+| `6` | `EXIT_SECURITY_INVALID` | Security policy or enclave violation. | `SEC`
+| `7` | (reserved) | Unused. | —
+| `8` | `EXIT_FEATURE_INVALID` | Feature-block configuration failure. | `SHM`, `RT`, `SIM`
+|===
+
+=== 4.3. Build-Time Diagnostics (`nodesmith`)
+
+[cols="1m,1m,1,3,1", options="header"]
+|===
+| Code | Exit | Severity | Cause & remediation | Spec
+
+| `ERR_SYN_001` | 3 | error | **Malformed input:** invalid TOML/YAML/JSON, duplicate key, `null`, date-time, or unsupported YAML tag. | 01
+| `ERR_SYN_002` | 3 | error | **Schema violation:** missing/unknown key, wrong type, or a conditional rule broken (`node_manifest.schema.json`). | 01
+| `ERR_SEM_101` | 4 | error | **Unresolved symbol:** undeclared parameter, state variable, local, message field root, or function; a local used before its `let` (including one defined later in the pipeline). | 02
+| `ERR_SEM_102` | 4 | error | **Type error:** operator/call/sink type mismatch, forbidden narrowing, default of the wrong type. | 02
+| `ERR_SEM_103` | 4 | error | **Circular dependency:** a local that references itself in its own definition (`let y = y + 1.0`). | 02
+| `ERR_SEM_104` | 4 | error | **Duplicate or reserved identifier;** state variable or output target assigned twice in one pipeline; duplicate callback-group name. | 01, 02
+| `ERR_SEM_105` | 4 | error | **Dangling reference:** a trigger `source`, output target, `callback_group`, fault-injection `target`, hardware `input`/`output`, or benchmark `pipeline` names nothing; a service with zero or several pipelines. | 01
+| `ERR_SEM_106` | 4 | error | **Default violates validation:** parameter default / state initial value breaks its bounds or a `parameter_constraints` expression. | 01, 07
+| `ERR_SEM_107` | 4 | error | **Undeclared message field:** a field path read or written is not a declared leaf of its type in `[interfaces]`, or the type has no entry. | 01, 02
+| `ERR_SEM_108` | 4 | error | **Invalid trigger binding:** `msg.`/`req.`/`res.` used under a trigger that does not provide it. | 02
+| `ERR_SEM_109` | 4 | error | **Constant division by zero.** | 02
+| `ERR_SEM_110` | 4 | warning | **Unused subscriber:** no pipeline is triggered by it. | 01
+| `ERR_SEM_111` | 4 | — | **Retired:** the framework reads no ROS interface files, so definitions are never "unavailable". Reserved; never emitted. | 01
+| `ERR_SEM_112` | 4 | error | **Inconsistent interface declaration:** a path is both a field and the prefix of another field. | 01
+| `ERR_SEM_113` | 4 | warning | **Unused interface declaration:** an `[interfaces]` entry names a type no endpoint uses. | 01
+| `ERR_SEM_114` | 4 | error | **Feature unsupported by target:** an enabled extension block other than `concurrency` with `target_language = "python"` (v1). | 01
+| `ERR_CNC_201` | 5 | error | **Unsafe callback-group assignment:** pipelines that share state are in different groups, a stateful pipeline is in a `Reentrant` group, or one conflict component names several groups. | 12
+| `ERR_CNC_202` | 5 | — | **Retired:** state needs no locks (`SPEC-12` §3.3), so lock-order deadlock cannot occur. Reserved; never emitted. | 12
+| `ERR_CNC_203` | 5 | — | **Retired:** it applied only to a target without callback-group support, and no supported target lacks it. Reserved; never emitted. | 12
+| `ERR_SEC_302` | 6 | error | **Invalid enclave:** a `security.enclave` segment is empty, is `.` or `..`, or has a character outside `[A-Za-z0-9_.-]` (the leading `/` is a schema rule; `SPEC-08` §5), or the generated `permissions.xml` fails validation against the DDS-Security permissions schema. | 08
+| `ERR_SEC_303` | 6 | error | **Restricted namespace:** with security enabled, a publisher on a restricted system topic (`SPEC-08` §5) without an explicit `allow = true` publish permission for exactly that topic. | 08
+| `ERR_SEC_304` | 6 | error | **Permission conflict:** the same permission topic and direction listed with both `allow = true` and `allow = false`, or an `allow = false` entry that removes no derived grant (`SPEC-01` §5.1 rule 6). | 01, 08
+| `ERR_SHM_001` | 8 | error | **Zero-copy misconfigured:** `zero_copy` without an enabled `shared_memory` block, wrong QoS, `loan_pool_capacity` above `max_loaned_messages`, a `middleware_backend` the chosen RMW does not support (`SPEC-03` §2.1), or a target other than `cpp` (only C++ supports loans). | 01, 06
+| `ERR_SHM_002` | 8 | error | **Message not loanable:** a `zero_copy` endpoint's type is not declared `fixed_size = true` in `[interfaces]`. | 01, 06
+| `ERR_SHM_003` | 8 | error | **Pool too small:** `loan_pool_capacity × message size` exceeds `segment_size_bytes`. | 06
+| `ERR_RT_002` | 8 | error | **Invalid real-time configuration:** `callback_group` without an enabled `realtime` block, `error_transition` without `lifecycle`, `concurrency.threads > 1` with a non-multi-threaded executor. | 01, 10
+| `ERR_SIM_001` | 8 | error | **Simulation in a release build:** `simulation.enabled` with `--mode=release` and no block-level `enabled_in_production = true`, or a fault-injection entry without its own `enabled_in_production = true`. | 01, 11
+| `ERR_SIM_002` | 8 | error | **Simulation clock conflict:** `use_sim_time` with a `steady`/`system` timer. | 01, 11
+| `ERR_SIM_003` | 8 | error | **Fault injection incompatible with its target:** `bit_flip` on a type not declared `fixed_size = true`. | 01, 11
+|===
+
+=== 4.4. Structured Diagnostic Output (`--format=json`)
+
+Only build-time diagnostics appear here. `file`, `line` and `column` are omitted for diagnostics that have no source position (none of the current codes).
+
+[source,json]
+----
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Nodesmith CLI Diagnostic Format",
+  "type": "object",
+  "required": ["exit_code", "success", "error_count", "warning_count", "diagnostics"],
+  "properties": {
+    "exit_code": { "type": "integer", "minimum": 0, "maximum": 255 },
+    "success": { "type": "boolean" },
+    "error_count": { "type": "integer", "minimum": 0 },
+    "warning_count": { "type": "integer", "minimum": 0 },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "severity", "message"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^ERR_[A-Z]{2,3}_[0-9]{3}$" },
+          "severity": { "type": "string", "enum": ["error", "warning", "info"] },
+          "message": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "column": { "type": "integer", "minimum": 1 },
+          "remediation_hint": { "type": "string" }
+        }
+      }
+    }
+  }
+}
+----
+
+Console rendering (same content):
+
+[source,text]
+----
+error[ERR_SEM_104]: state variable assigned twice in pipeline 'filter_pass'
+  --> config/imu_filter.toml:28:3
+   |
+28 |   expressions = ["state.count = 1", "state.count = 2"]
+   |                                     ^^^^^^^^^^^^^^^^ 'state.count' already assigned in this pipeline
+   |
+   = help: assign each state variable at most once per pipeline (SPEC-02 §4).
+   = exit status: 4 (EXIT_SEMANTIC_INVALID)
+----
+
+=== 4.5. Runtime Diagnostics (generated nodes)
+
+Generated nodes report runtime codes as a `diagnostic_msgs/msg/DiagnosticStatus` on `/diagnostics` (`name` = node name, `level` = severity, `message` = the cause text, `values` including `code`, `pipeline` when relevant, and `detail`) and as a log line prefixed with `[ERR_xxx_nnn]`. `info`-severity codes log only. Where a runtime code needs to be raised in a callback path, the generator MUST use a pre-allocated diagnostic buffer (`SPEC-10` zero-allocation rule) or defer emission to a non-real-time thread.
+
+[cols="1m,1,1,3,1", options="header"]
+|===
+| Code | Severity | Raised when | Meaning | Spec
+
+| `ERR_RUN_101` | error | pipeline execution | **Numeric fault:** the execution was aborted; no state committed, nothing published. | 02
+| `ERR_RUN_102` | warning | timer trigger | **Firing skipped:** the previous execution had not finished. | 02
+| `ERR_RUN_103` | warning | parameter set | **Parameter update rejected** by validation or read-only rule. | 07
+| `ERR_LCY_101` | error | lifecycle | **Error state entered** (`ErrorProcessing`) because of a pipeline fault or failed transition. | 05
+| `ERR_LCY_102` | warning | lifecycle | **Transition timeout:** a transition callback exceeded its watchdog. | 05
+| `ERR_PRF_101` | warning | callback end | **Latency budget violated** (`telemetry.latency_budget_us`). | 09
+| `ERR_SEC_101` | error | startup | **Keystore / enclave check failed:** keys, certificates or environment missing; the node does not start. | 08
+| `ERR_SEC_102` | warning | periodic | **Certificate expires within 30 days.** | 08
+| `ERR_SHM_101` | warning | publish | **Loan pool exhausted;** heap fallback used or frame dropped per `fallback_to_heap`. | 06
+| `ERR_SHM_102` | warning | publish | **Loans unsupported** by the active RMW; heap path used. | 06
+| `ERR_RT_101` | error | startup | **`mlockall` failed;** the node does not start. | 10
+| `ERR_RT_102` | error | startup | **CPU-affinity call failed;** the node does not start. | 10
+| `ERR_RT_103` | error | startup | **Scheduling-policy call failed;** the node does not start. | 10
+| `ERR_RT_104` | warning | periodic | **Page faults increased after initialisation.** | 10
+| `ERR_RT_105` | warning | callback end | **Deadline missed;** `on_deadline_miss` action executed. | 10
+| `ERR_SIM_101` | info | publish | **Fault injected** into a publisher's message. | 11
+| `ERR_SIM_102` | warning | periodic | **Simulation clock skew** beyond tolerance. | 11
+| `ERR_SIM_103` | warning | clock | **Simulation time went backwards;** state reset triggered. | 11
+|===
+
+== 5. Scriptability
+
+`nodesmith` is a plain command-line tool. Its exit statuses (§4.2) and `--format=json` output (§4.4) are its whole automation interface. These specs prescribe no CI system, build step or workflow.

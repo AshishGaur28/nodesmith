@@ -1,0 +1,179 @@
+= Nodesmith: Specification Suite Index
+:status: Active
+:version: 0.2.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Summary
+
+The framework turns a declarative node manifest (TOML, YAML or JSON) into a ROS 2 node in C++ (`rclcpp`) or Python (`rclpy`), targeting ROS 2 Jazzy. Rust is deferred to a later release. The manifest is parsed, lowered into a language-neutral IR, checked, and rendered by per-target generators. Optional feature blocks add lifecycle management, zero-copy transport, security, tracing, real-time scheduling and simulation.
+
+*Scope:* this is a software framework for designing a ROS 2 system entirely from configuration. Hardware is a non-goal: there are no device drivers, accelerator (GPU/FPGA) offload, fieldbus or sensor I/O, and no hardware-in-the-loop support. Robots' hardware is reached only through the ROS 2 interfaces (topics, services) other packages provide. Operating-system real-time settings (`SPEC-10`) are in scope; they configure the process, not devices.
+
+*Where the specs stop:* at generation. They cover the toolchain (parse, check, lower, synthesize, emit the source package and its policy files) and the behaviour the *generated code* must have, so that C++ and Python nodes from one manifest behave the same. That behavioural contract is what `SPEC-02` §7 and `SPEC-05`–`SPEC-12` describe; words such as "pipeline", "commit" and "publish" there refer to the generated node's own message handling, never to CI, git or release pipelines. Building, packaging, deploying and running the generated package are out of scope.
+
+[text]
+----
+manifest ──► SPEC-01 schema check ──► SPEC-00 lowering ──► IR (+ SPEC-02 expressions,
+(.toml/.yaml/.json)                                          SPEC-12 callback groups)
+                                                               │ SPEC-04 semantic + feature gates
+                                                               ▼
+                                          SPEC-03 generators (C++ / Python)
+                                                               │  + feature specs 05–12
+                                                               ▼
+                                                    generated ROS 2 package
+----
+
+== 2. Specifications
+
+`SPEC-00`, `SPEC-01` and `SPEC-02` are `Frozen`: together with the two schemas and the error-code registry they are the config surface of `manifest_version = "1"` (§7). All other specifications are `Draft` until a generator has been built and verified against them. Version numbers are per document.
+
+[cols="1m,3,1m,1m,3", options="header"]
+|===
+| ID | Title | Status | Version | Owns
+
+| `SPEC-00`
+| link:SPEC-00-architecture-ir.adoc[System Architecture & IR Contract]
+| Frozen | 1.0.0
+| Pipeline stages, IR model and canonical form, `schemas/node_ir.schema.json`.
+
+| `SPEC-01`
+| link:SPEC-01-user-schema-syntax.adoc[User Manifest Schema & Syntax]
+| Frozen | 1.0.0
+| Manifest structure, identifiers, references, cross-block rules, `schemas/node_manifest.schema.json`.
+
+| `SPEC-02`
+| link:SPEC-02-expression-language.adoc[Expression Language & Pipeline Execution Semantics]
+| Frozen | 1.0.0
+| Types, grammar, built-ins, numeric faults, per-trigger execution order.
+
+| `SPEC-03`
+| link:SPEC-03-code-synthesis-targets.adoc[Multi-Language Code Synthesis]
+| Draft | 0.1.0
+| Type mapping, package layouts, determinism, template pipeline.
+
+| `SPEC-04`
+| link:SPEC-04-cli-toolchain.adoc[Toolchain CLI & Validation]
+| Draft | 0.1.0
+| `nodesmith` commands, validation gates, *error-code and exit-status registry*, diagnostic formats.
+
+| `SPEC-05`
+| link:SPEC-05-runtime-lifecycle-management.adoc[Runtime Lifecycle Management]
+| Draft | 0.1.0
+| `[lifecycle]`; managed-node state machine (REP-2007) and error strategy.
+
+| `SPEC-06`
+| link:SPEC-06-shared-memory-zero-copy-ipc.adoc[Shared Memory & Zero-Copy IPC]
+| Draft | 0.1.0
+| `[shared_memory]`, endpoint `zero_copy`; loaned messages.
+
+| `SPEC-07`
+| link:SPEC-07-dynamic-parameter-management.adoc[Dynamic Parameter Management]
+| Draft | 0.1.0
+| Parameter `validation`, `parameter_constraints` runtime enforcement, atomic updates.
+
+| `SPEC-08`
+| link:SPEC-08-security-access-control.adoc[Security & Access Control]
+| Draft | 0.1.0
+| `[security]`; SROS 2 governance and permissions generation (unsigned), startup checks.
+
+| `SPEC-09`
+| link:SPEC-09-benchmarking-tracing-and-performance.adoc[Benchmarking, Tracing & Performance]
+| Draft | 0.1.0
+| `[telemetry]`; tracepoints, latency budget, benchmarks.
+
+| `SPEC-10`
+| link:SPEC-10-real-time-execution-and-scheduling.adoc[Real-Time Execution & Scheduling]
+| Draft | 0.1.0
+| `[realtime]`; POSIX scheduling, memory locking, executor type, callback-group deadlines.
+
+| `SPEC-11`
+| link:SPEC-11-simulation-and-fault-injection.adoc[Simulation & Fault Injection]
+| Draft | 0.2.0
+| `[simulation]`; simulated clock, publisher fault injection.
+
+| `SPEC-12`
+| link:SPEC-12-concurrency-and-state-synchronization.adoc[Concurrency, Callback Groups & State Synchronization]
+| Draft | 0.1.0
+| `[concurrency]`; derived callback groups, parameter snapshots, run gate.
+
+|===
+
+== 3. Dependencies & Reading Order
+
+[text]
+----
+Core          SPEC-01 manifest ─► SPEC-02 expressions ─► SPEC-00 IR ─► SPEC-03 generators
+                     │                                       │              │
+Toolchain            └──────────────► SPEC-04 gates & registry ◄────────────┘
+
+Runtime       SPEC-12 concurrency ◄─ SPEC-05 lifecycle     SPEC-07 parameters
+                      ▲                    ▲                     ▲
+Features      SPEC-06 zero-copy   SPEC-08 security   SPEC-09 telemetry
+              SPEC-10 real-time   SPEC-11 simulation           (each adds one manifest block)
+----
+
+Read `SPEC-01`, `SPEC-02`, `SPEC-00`, `SPEC-04` first; then `SPEC-12` and `SPEC-05`; then a feature spec as needed. A feature spec only adds a manifest block, its semantics, and the diagnostic codes it owns; it never changes the core model.
+
+== 4. Normative Artifacts
+
+[cols="2m,3", options="header"]
+|===
+| Artifact | Role
+| `schemas/node_manifest.schema.json` | The manifest schema, including every extension block (`SPEC-01`). Fails a document at Stage 2.
+| `schemas/node_ir.schema.json` | The lowered IR (`SPEC-00`). `schemas/flatbuffers/ir_ast.fbs` is reserved and not normative.
+| `docs/specs/SPEC-04*.adoc` §4 | The single registry of error codes and exit statuses.
+| `docs/specs/reference/cpp/` | Tested reference implementation of the `SPEC-12` primitives (parameter snapshot ring, run gate) with a ThreadSanitizer stress test. Spec text includes it, so the document cannot drift from the tested code.
+| `conformance/` | The conformance corpus: expected IR and hash for every example, YAML/JSON parity copies, and one rejected manifest per error code a manifest can trigger. `python conformance/verify.py` runs it; the reference front end in `conformance/reference/` is evidence, not the product (`conformance/README.md`). |
+| `examples/*.toml` | Reference manifests; `01`–`03` and `07`–`08` cover the core model (`07` service-heavy, C++; `08` startup/subscriber/timer triggers, Python), `04_all_extensions.toml` uses every block. They must validate against the manifest schema.
+|===
+
+*Normativity:* the schemas, the registry, the rules stated in prose, and the `reference/` sources are normative. Code snippets in `SPEC-03` and `SPEC-05`–`SPEC-11` show the required structure and obey the rules of `SPEC-02`, `SPEC-10` and `SPEC-12`, but only their ROS-independent parts have been compiled and run; treat the rest as illustrative until a generator template is built and tested against a real ROS distribution. Where a snippet disagrees with the prose or a schema, the prose or schema wins.
+
+== 5. Manifest Blocks & Diagnostic Categories
+
+[cols="1m,1m,2m", options="header"]
+|===
+| Top-level block | Owner | Error categories emitted by its spec
+| `node`, `parameters`, `parameter_constraints`, `state_variables`, `publishers`, `subscribers`, `services`, `interfaces`, `pipelines` | `SPEC-01`, `SPEC-02` | `SYN`, `SEM`, `RUN`
+| `concurrency` | `SPEC-12` | `CNC`
+| `lifecycle` | `SPEC-05` | `LCY`
+| `shared_memory` | `SPEC-06` | `SHM`
+| `security` | `SPEC-08` | `SEC`
+| `telemetry` | `SPEC-09` | `PRF`
+| `realtime` | `SPEC-10` | `RT`
+| `simulation` | `SPEC-11` | `SIM`
+|===
+
+== 6. Change Rules
+
+1. A new manifest block is added to the schema, to the table in `SPEC-01` §5, to `SPEC-04` Gate 1, to this index, and to `examples/04_all_extensions.toml` in the same change.
+2. A new diagnostic code is added to the `SPEC-04` registry in the same change as the spec text that emits it.
+3. Cross-references cite a spec and section (`SPEC-12 §3`), never a file name.
+4. `ir_version`, `manifest_version` and spec versions move independently; only a MAJOR bump of the first two is a compatibility break.
+5. Any change to the schemas, the expression language or the registry follows the freeze policy (§7) and passes `conformance/verify.py` in the same change.
+
+== 7. Freeze Policy
+
+Frozen surface: `schemas/node_manifest.schema.json` (revision `1.0.0`, `manifest_version = "1"`), `schemas/node_ir.schema.json` (`ir_version` `1.0.0`), `SPEC-00`, `SPEC-01`, `SPEC-02`, and the `SPEC-04` §4 registry.
+
+[cols="1m,3", options="header"]
+|===
+| Change | Rule
+| Patch (`1.0.x`) | Wording, descriptions, examples. No behaviour change; `conformance/expected/` is untouched.
+| Minor (`1.x.0`) | A new optional key, block, built-in function or diagnostic code. Every manifest that was valid stays valid. Defaults are materialized into the IR, so `expected/` may change: regenerate it with `verify.py --update`, review the diff, and add a corpus case for the new behaviour.
+| Major (`manifest_version = "2"`) | Anything that makes a valid manifest invalid, changes what it means, or changes an existing IR field. Needs its own corpus.
+|===
+
+*Registry:* the set of codes is closed. A code is never renumbered, reused or deleted: a code that is no longer emitted is marked *Retired* and stays reserved (`ERR_SEM_111`, `ERR_CNC_202`, `ERR_CNC_203`). A code's meaning and exit status never change; a new code is appended with its spec text, exit status and a corpus case.
+
+*Ambiguities found later* are resolved by a spec clarification (patch) when the intended behaviour is already what the corpus shows, and by a minor or major change otherwise.
+
+== 8. Known Gaps
+
+* Language coverage: in v1 the extension blocks are C++ only (`ERR_SEM_114` for Python; `zero_copy` with another target is `ERR_SHM_001`). Python extensions are the first work after v1. The reference snippets for lifecycle, security, tracing and simulation exist for C++ only.
+* RMW: v1 generates for `fastrtps` only (`node.rmw`, `SPEC-03` §2.1). Other RMWs are reserved and follow in a later phase; the choice is made at generation time, never at run time.
+* Snippets using ROS or Linux real-time APIs (`SPEC-03`, `05`–`07`, `09`, `10`, `11`) have not been compiled against those SDKs; the "Unverified against a ROS distribution" notes under each snippet list what needs checking against the pinned ROS distribution.
+* Target feasibility (`rclpy` lifecycle, loaned messages, callback groups) is asserted but unverified on ROS 2 Jazzy, the pinned distribution.

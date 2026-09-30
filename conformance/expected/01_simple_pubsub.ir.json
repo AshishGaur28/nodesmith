@@ -1,0 +1,115 @@
+{
+  "concurrency": {
+    "callback_groups": [
+      {
+        "explicit": false,
+        "name": "pipeline_echo",
+        "type": "MutuallyExclusive"
+      }
+    ],
+    "executor": "SingleThreadedExecutor",
+    "threads": 1
+  },
+  "execution_dags": [
+    {
+      "assignments": [
+        {
+          "source_node_id": "n2",
+          "target_field_path": "out_pub.data"
+        }
+      ],
+      "callback_group": "pipeline_echo",
+      "id": "echo",
+      "nodes": [
+        {
+          "attrs": {
+            "path": "data",
+            "root": "msg"
+          },
+          "id": "n0",
+          "op": "input",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "value": 2.0
+          },
+          "id": "n1",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "operator": "*"
+          },
+          "id": "n2",
+          "label": "doubled",
+          "op": "binary",
+          "operands": [
+            "n0",
+            "n1"
+          ],
+          "type_symbol": "float64"
+        }
+      ],
+      "state_writes": [],
+      "trigger": {
+        "kind": "subscriber",
+        "source_id": "in_sub"
+      }
+    }
+  ],
+  "extensions": {},
+  "interface_types": [
+    {
+      "fields": {
+        "data": "float64"
+      },
+      "fixed_size": false,
+      "kind": "msg",
+      "type_symbol": "std_msgs/msg/Float64"
+    }
+  ],
+  "interfaces": {
+    "publishers": [
+      {
+        "identifier": "out_pub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/demo/out",
+        "type_symbol": "std_msgs/msg/Float64",
+        "zero_copy": false
+      }
+    ],
+    "services": [],
+    "subscribers": [
+      {
+        "identifier": "in_sub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/demo/in",
+        "type_symbol": "std_msgs/msg/Float64",
+        "zero_copy": false
+      }
+    ]
+  },
+  "ir_version": "1.0.0",
+  "node_meta": {
+    "name": "echo_node",
+    "namespace": "/demo",
+    "version": "0.1.0"
+  },
+  "parameter_constraints": [],
+  "parameters": [],
+  "state_buffers": []
+}

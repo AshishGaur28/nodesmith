@@ -1,0 +1,185 @@
+= SPEC-08: Security & Access Control Specification
+:status: Draft
+:version: 0.1.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Executive Summary & Scope
+
+`SPEC-08` specifies the security configuration the framework generates for SROS 2 (DDS-Security): the manifest block, the governance and permissions policies derived from it, and the startup checks of the generated node. Authentication, access control and encryption are provided by the RMW's DDS-Security plugins; the framework does not implement a transport of its own, and TLS/DTLS transports (a vendor-specific RMW feature separate from DDS-Security) are out of scope.
+
+To safeguard autonomous systems and automotive control networks against eavesdropping, spoofing, unauthorized publish/subscribe actions, and tampered parameters, `SPEC-08` standardizes security configurations using DDS-SECURITY v1.1 standards integrated with node manifests (`SPEC-01`).
+
+[text]
+----
+┌────────────────────────────────────────────────────────────────────────┐
+│                          Security Enclave Scope                        │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ PKI Certificate & Key Provisioning (`ROS_SECURITY_KEYSTORE`)      │ │
+│ │  ├── identity_ca.cert.pem  (CA Certificate)                         │ │
+│ │  ├── cert.pem              (Node Identity Certificate)               │ │
+│ │  └── key.pem               (Private Key)                             │ │
+│ └──────────────────────────────────┬─────────────────────────────────┘ │
+│                                    │                                   │
+│                                    ▼                                   │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ SROS 2 Access Control Engine (DDS-SECURITY Plugins)                │ │
+│ │  ├── Authentication: Auth:PKI-DH (X.509 + ECDH)                    │ │
+│ │  ├── Access Control: Access:Permissions-Signed                     │ │
+│ │  └── Cryptography: Crypto:AES-GCM-GMAC (built-in)                 │ │
+│ └──────────────────────────────────┬─────────────────────────────────┘ │
+└────────────────────────────────────┼───────────────────────────────────┘
+                                     │ Encrypted / Authenticated Transport
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                       Secure Communication Channel                     │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ Enforced Topics (`governance.xml`, `permissions.xml`)               │ │
+│ └────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────┘
+----
+
+== 2. Manifest Security Extensions (`SPEC-01`)
+
+Nodes declare their enclave, security mode, metadata protection and extra topic permissions via the optional `[security]` block (schema: `$defs/SecurityExtension`; enum values are lowercase in the manifest, the generator maps them to the `SROS 2` spelling such as `Enforce`):
+
+[source,toml]
+----
+[node]
+name = "vehicle_gateway_node"
+namespace = "/telematics"
+target_language = "cpp"
+
+[security]
+enabled = true
+enclave = "/telematics/vehicle_gateway_node"
+security_mode = "enforce"      # enforce | permissive | disabled
+key_store_path = "/etc/ros/sros2/keystore"
+
+[security.encryption]
+allow_unencrypted_metadata = false   # true: metadata is signed but not encrypted
+
+[[security.permissions.publish]]
+topic = "/chassis/actuator_commands"
+allow = true
+
+[[security.permissions.subscribe]]
+topic = "/sensors/raw_telemetry"
+allow = true
+----
+
+=== 2.1. Parameter Invariants
+
+* `enabled` (`bool`): Enables SROS 2 authentication, access control and encryption. It must agree with `security_mode`: `security_mode = "disabled"` requires `enabled = false`, and `enabled = true` requires `enclave`.
+* `security_mode` (`enum`):
+  ** `enforce`: Strictly rejects unauthenticated peers and non-compliant access requests.
+  ** `permissive`: Logs authentication/authorization failures without dropping communication.
+  ** `disabled`: Bypasses all security plugins.
+* `enclave` (`string`): Defines the exact ROS 2 security enclave path mapping to the directory containing keying materials.
+* `encryption.allow_unencrypted_metadata` (`bool`, default `false`): `false` generates governance with `metadata_protection_kind = ENCRYPT`; `true` uses `SIGN`. The payload cipher (AES-GCM) is fixed by the RMW's crypto plugin and is not configurable here.
+* `key_store_path` (`string`): Directory of the SROS 2 keystore; the generated node reads it at startup.
+
+== 3. SROS 2 Governance & Permissions Generation
+
+`nodesmith generate` writes the *unsigned* SROS 2 policies `security/governance.xml` and `security/permissions.xml` next to the generated package, derived deterministically from the manifest (`SPEC-01`). Signing them (producing `governance.p7s` and `permissions.p7s`) needs the keystore's CA private key, which never enters the build; the operator signs with SROS 2 tooling (`ros2 security`). `governance.xml` is per DDS domain, not per node, and reflects `security_mode` and `allow_unencrypted_metadata`; `permissions.xml` is per enclave.
+
+=== 3.1. Generated Governance Artifact (`governance.xml`)
+
+[source,xml]
+----
+<?xml version="1.0" encoding="UTF-8"?>
+<dds xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.omg.org/spec/DDS-SECURITY/20170901/omg_shared_ca_governance.xsd">
+  <domain_access_rules>
+    <domain_rule>
+      <domains>
+        <id_range><min>0</min><max>230</max></id_range>
+      </domains>
+      <allow_unauthenticated_participants>false</allow_unauthenticated_participants>
+      <enable_join_access_control>true</enable_join_access_control>
+      <discovery_protection_kind>ENCRYPT</discovery_protection_kind>
+      <liveliness_protection_kind>ENCRYPT</liveliness_protection_kind>
+      <rtps_protection_kind>ENCRYPT</rtps_protection_kind>
+      <topic_access_rules>
+        <topic_rule>
+          <topic_expression>*</topic_expression>
+          <enable_discovery_protection>true</enable_discovery_protection>
+          <enable_readwrite_protection>true</enable_readwrite_protection>
+          <metadata_protection_kind>ENCRYPT</metadata_protection_kind>
+          <data_protection_kind>ENCRYPT</data_protection_kind>
+        </topic_rule>
+      </topic_access_rules>
+    </domain_rule>
+  </domain_access_rules>
+</dds>
+----
+
+=== 3.2. Security Lifetime and Invariants
+
+1. **Enclave Identity Invariant:** Every synthesized node MUST verify that its enclave's key material and signed policies exist before initializing its RMW context, and refuse to start otherwise (`ERR_SEC_101`). Certificate validity is enforced by the RMW during authentication and monitored by `ERR_SEC_102`.
+2. **Access Control Strictness:** The node synthesizer MUST generate strict topic permission entries derived explicitly from `[[publishers]]`, `[[subscribers]]` and `[[security.permissions.*]]` tables (`SPEC-01` §5.1 rule 6). Undeclared topics are implicitly denied, except the framework's own infrastructure topics, which are always derived for the features a node enables: `/parameter_events` and the node's parameter services (parameters, `SPEC-07`), `/rosout`, the node's lifecycle services (`lifecycle`, `SPEC-05`), `/diagnostics` (any runtime diagnostic, `SPEC-04` §4.5), and the clock topic (`simulation`, `SPEC-11`).
+
+== 4. Target Code Generation Patterns (`SPEC-03`)
+
+The framework synthesizer emits language-native environment checks and context initializers enforcing the security specification.
+
+=== 4.1. C++ (`rclcpp`) Synthesized Secure Context Initializer
+
+[source,cpp]
+----
+// Generated by nodesmith (SPEC-08 / SPEC-03). DO NOT EDIT DIRECTLY.
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <string>
+#include <rclcpp/rclcpp.hpp>
+
+namespace telematics {
+
+// Called from main() BEFORE rclcpp::init: the security settings are read when the context is
+// created, so setting them later (for example in a node constructor) has no effect.
+// Values come from the manifest: security_mode "enforce" maps to the SROS 2 spelling "Enforce".
+// Returns false after printing ERR_SEC_101; main() then exits non-zero and the node never starts.
+bool prepare_security_environment() {
+  namespace fs = std::filesystem;
+  constexpr const char * kStrategy = "Enforce";  // enforce | permissive from the manifest
+  constexpr const char * kKeystore = "/etc/ros/sros2/keystore";  // security.key_store_path
+  constexpr const char * kEnclave = "/telematics/vehicle_gateway_node";  // security.enclave
+
+  // The manifest is authoritative for security: a weaker value inherited from the environment is overwritten.
+  ::setenv("ROS_SECURITY_ENABLE", "true", 1);
+  ::setenv("ROS_SECURITY_STRATEGY", kStrategy, 1);
+  ::setenv("ROS_SECURITY_KEYSTORE", kKeystore, 1);
+  ::setenv("ROS_SECURITY_ENCLAVE_OVERRIDE", kEnclave, 1);
+
+  // Fail fast if the enclave's material is missing (SPEC-08 §3.2 rule 1).
+  const fs::path enclave_dir = fs::path(kKeystore) / "enclaves" / (std::string(kEnclave).substr(1));
+  for (const char * file : {"identity_ca.cert.pem", "cert.pem", "key.pem", "governance.p7s", "permissions.p7s"}) {
+    if (!fs::exists(enclave_dir / file)) {
+      std::fprintf(stderr, "ERR_SEC_101: missing %s\n", (enclave_dir / file).c_str());
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace telematics
+
+// main(): if (!telematics::prepare_security_environment()) return 1; rclcpp::init(argc, argv); ...
+----
+
+*Unverified against a ROS distribution (check before templating):* the environment variable names (`ROS_SECURITY_KEYSTORE`, `ROS_SECURITY_ENCLAVE_OVERRIDE`) and the enclave directory layout for the pinned ROS distribution and RMW.
+
+=== 4.2. Language Support
+
+C++ is specified above. Python uses the same environment variables and startup checks (`rclpy.init` reads the same `ROS_SECURITY_*` settings), but no reference snippet exists for it and its SROS 2 support has not been verified for the pinned distribution.
+
+== 5. Diagnostics, Verification & Audit Rules (`SPEC-04` / `SPEC-09`)
+
+Static analysis and runtime checks enforced by `nodesmith` (`SPEC-04`) for secure nodes:
+
+1. **Security Audit Check (`ERR_SEC_303`):** With `security.enabled`, a `[[publishers]]` entry on a restricted system topic needs an explicit `[[security.permissions.publish]]` entry with `allow = true` for exactly that topic. Restricted topics are `/rosout`, `/parameter_events`, `/clock`, `/ros_discovery_info`, and any topic whose first segment starts with `_`.
+2. **Expired Certificate Telemetry (`ERR_SEC_102`):** Runtime telemetry (`SPEC-09`) periodically inspects X.509 certificate expiry dates and raises a warning diagnostic (`SPEC-04`) 30 days prior to certificate expiration.
+3. **Permission Conflict (`ERR_SEC_304`):** rejected at build time (`SPEC-01` §5.1 rule 6): the same topic and direction listed with both `allow = true` and `allow = false`; an `allow = false` entry naming a topic for which no grant was derived (it removes nothing).
+4. **Enclave Check (`ERR_SEC_302`, build time):** `security.enclave` has only segments that match `[A-Za-z0-9_.-]+` and are not `.` or `..` (an enclave that does not start with `/` is already a schema error, `ERR_SYN_002`), and the generated `permissions.xml` validates against the DDS-Security permissions schema. The framework never reads the keystore at build time; whether keys exist is the runtime check `ERR_SEC_101` (`SPEC-04` §4).

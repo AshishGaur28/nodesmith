@@ -1,0 +1,32 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[subscribers]]
+id = "s"
+topic = "/in"
+type = "std_msgs/msg/Float64"
+
+[[publishers]]
+id = "p"
+topic = "/out"
+type = "std_msgs/msg/Float64"
+
+[interfaces."std_msgs/msg/Float64".fields]
+data = "float64"
+
+[state_variables.n]
+type = "int64"
+initial_value = 0
+
+[[pipelines]]
+name = "a"
+expressions = [
+  "state.n = msg.data"
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "s"

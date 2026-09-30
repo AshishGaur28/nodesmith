@@ -1,0 +1,71 @@
+# Two separate components each break a concurrency rule.
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[subscribers]]
+id = "s"
+topic = "/in"
+type = "std_msgs/msg/Float64"
+
+[[publishers]]
+id = "p"
+topic = "/out"
+type = "std_msgs/msg/Float64"
+
+[interfaces."std_msgs/msg/Float64".fields]
+data = "float64"
+
+[state_variables.x]
+type = "float64"
+initial_value = 0.0
+
+[state_variables.n]
+type = "float64"
+initial_value = 0.0
+
+[realtime]
+enabled = true
+policy = "SCHED_OTHER"
+[[realtime.callback_groups]]
+name = "g1"
+type = "MutuallyExclusive"
+[[realtime.callback_groups]]
+name = "g2"
+type = "MutuallyExclusive"
+[[realtime.callback_groups]]
+name = "r"
+type = "Reentrant"
+
+[[pipelines]]
+name = "a"
+callback_group = "g1"
+expressions = [
+  "state.x = 1.0"
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "s"
+
+[[pipelines]]
+name = "b"
+callback_group = "g2"
+expressions = [
+  "let y = state.x"
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "s"
+
+[[pipelines]]
+name = "c"
+callback_group = "r"
+expressions = [
+  "state.n = 1.0"
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "s"

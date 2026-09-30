@@ -1,0 +1,250 @@
+= SPEC-07: Dynamic Parameter Management Specification
+:status: Draft
+:version: 0.1.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Executive Summary & Scope
+
+`SPEC-07` specifies the architecture, operational semantics, online validation hooks, atomic multi-parameter update mechanics, dynamic event broadcasting, and target language generation patterns for parameter management in the Nodesmith.
+
+While `SPEC-01` introduces basic parameter declarations and `SPEC-02` enables parameters inside AST pipeline expressions, `SPEC-07` establishes the runtime parameter handling model:
+1. Declarative parameter descriptors, range constraints, read-only invariants, and metadata annotations.
+2. Atomic multi-parameter update validation via `OnSetParametersCallback` hooks.
+3. Thread-safe runtime parameter lookup and AST expression binding synchronization.
+4. Parameter event notification dispatch (`/parameter_events`) and dynamic re-configuration integration.
+
+[text]
+----
+┌────────────────────────────────────────────────────────────────────────┐
+│                        ROS 2 Parameter Client                          │
+│          (`ros2 param set` / Dynamic Reconfigure CLI / GUI)            │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ Set Parameter Request
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                 Node Parameter Event Engine (SPEC-07)                  │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ Atomic Validation Callback (`OnSetParametersCallback`)              │ │
+│ │ 1. Type & Range Bounds Check (Min / Max / Step / Regex)           │ │
+│ │ 2. Custom User-Defined Validation Expressions (SPEC-02)            │ │
+│ │ 3. Read-Only / Dynamic Mutability Rules Inspection               │ │
+│ └─────────────────────────────────┬──────────────────────────────────┘ │
+└───────────────────────────────────┼────────────────────────────────────┘
+                                    │
+                  ┌─────────────────┴─────────────────┐
+                  │ REJECT                            │ ACCEPT
+                  ▼                                   ▼
+┌───────────────────────────────────┐ ┌──────────────────────────────────┐
+│ Return Failure Result to Client   │ │ 1. Mutate In-Memory Parameter    │
+│ (No State Change / Error Message) │ │ 2. Atomic AST Expression Sync    │
+└───────────────────────────────────┘ │ 3. Publish `/parameter_events`   │
+                                      └──────────────────────────────────┘
+----
+
+== 2. Manifest Parameter Extensions (`SPEC-01`)
+
+Parameters are declared in the `[parameters]` table of `SPEC-01`. `SPEC-07` enriches parameter declarations with strict dynamic validation metadata and mutability rules:
+
+[source,toml]
+----
+[node]
+name = "imu_filter_node"
+namespace = "/sensors/chassis"
+target_language = "cpp"
+
+[parameters.cutoff_frequency]
+type = "float64"
+default = 10.0
+read_only = false
+description = "Low-pass filter cutoff frequency in Hertz"
+[parameters.cutoff_frequency.validation]
+min = 0.1
+max = 1000.0
+step = 0.1
+
+[parameters.filter_type]
+type = "string"
+default = "BUTTERWORTH"
+read_only = true # Immutability invariant: cannot be modified after node configuration
+description = "Filter algorithm variant"
+[parameters.filter_type.validation]
+one_of = ["BUTTERWORTH", "CHEBYSHEV", "BESSEL"]
+
+[parameters.enable_scaling]
+type = "bool"
+default = true
+read_only = false
+
+[parameters.scaling_matrix]
+type = "float64[]"
+default = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+read_only = false
+[parameters.scaling_matrix.validation]
+fixed_length = 9
+----
+
+=== 2.1. Parameter Attribute Rules
+
+* `type` (`enum`): Required canonical scalar or array type (`SPEC-02` §2.1: `bool`, `int32`, `int64`, `float32`, `float64`, `string`, `bytes`, and scalar arrays such as `float64[]`).
+* `default` (Variant): Initial default value matching the declared `type`.
+* `read_only` (`bool`): When `true`, the parameter is locked during node startup and any subsequent `set_parameters` call is rejected dynamically.
+* `validation` (`table`): Enforces runtime range limits (`min`, `max`, `step`), string set constraints (`one_of`), array sizes (`fixed_length`), or regex matching (`regex`).
+
+== 3. Atomic Multi-Parameter Updates & Validation Mechanics
+
+To prevent intermediate corrupt states (e.g., updating a minimum bound to be greater than a maximum bound prior to the second update arriving), dynamic parameter updates MUST be executed atomically.
+
+=== 3.1. Validation Protocol & Transaction Execution
+
+When an external ROS 2 client invokes a parameter change, the synthesized `OnSetParametersCallback` executes the following sequence:
+
+1. **Read-Only Invariant Check:** If any parameter marked `read_only = true` is included in the modification request list, reject the entire transaction immediately.
+2. **Type & Range Boundary Gate:** Build the complete proposed parameter set, then evaluate min/max/step/`one_of`/`fixed_length`/`regex` on it. If any boundary check fails, construct a descriptive error message and reject the transaction.
+3. **Cross-Parameter Validation Expressions (`SPEC-02`):** Evaluate multi-parameter relational expressions (e.g., `param.min_freq < param.max_freq`).
+4. **Atomic State Commit:** If all validations pass, publish the whole batch as one new parameter snapshot with a single atomic swap (`SPEC-12` §5); executions in flight keep the snapshot they started with. If any validation fails, discard all changes in the request batch.
+
+=== 3.2. Parameter Validation Matrix
+
+[cols="1m,2,2,3", options="header"]
+|===
+| Validation Field | Applicable Types | Constraints | Failure Remediation
+
+| `min` / `max`
+| `int64`, `float64`
+| Bounds inclusive: `min <= value <= max`
+| Rejects parameter update with `SetParametersResult{successful: false}`.
+
+| `step`
+| `int64`, `float64`
+| Value modulus step zero alignment
+| Rejects parameter update if not an integer multiple of step offset.
+
+| `one_of`
+| `string`, `int64`
+| Value must exist in fixed string list
+| Rejects parameter update if value is not an exact match.
+
+| `fixed_length`
+| Array Types
+| `array.size() == fixed_length`
+| Rejects update if array length does not match expected matrix size.
+|===
+
+== 4. Target Code Generation Patterns (`SPEC-03`)
+
+Synthesized nodes generate language-native parameter declaration and callback handler implementations conforming to `SPEC-03`.
+
+=== 4.1. C++ (`rclcpp`) Synthesized Dynamic Parameter Handler
+
+[source,cpp]
+----
+// Generated by nodesmith (SPEC-07 / SPEC-03 / SPEC-12). DO NOT EDIT DIRECTLY.
+#include <cmath>
+#include <optional>
+#include <string>
+#include <vector>
+#include <rclcpp/rclcpp.hpp>
+
+namespace sensors::chassis {
+
+struct Params {
+  double cutoff_frequency{10.0};
+  std::string filter_type{"BUTTERWORTH"};
+  std::vector<double> scaling_matrix{1, 0, 0, 0, 1, 0, 0, 0, 1};
+};
+
+// One validation function for initial values and for every update, so both obey the same rules.
+// Returns the reason on failure. Cross-parameter `parameter_constraints` are appended here.
+static std::optional<std::string> validate(const Params & p) {
+  if (!(p.cutoff_frequency >= 0.1 && p.cutoff_frequency <= 1000.0)) {
+    return "'cutoff_frequency' out of range [0.1, 1000.0]";
+  }
+  if (std::fabs(std::remainder(p.cutoff_frequency - 0.1, 0.1)) > 1e-9) {
+    return "'cutoff_frequency' is not a multiple of step 0.1";
+  }
+  if (p.filter_type != "BUTTERWORTH" && p.filter_type != "CHEBYSHEV" && p.filter_type != "BESSEL") {
+    return "'filter_type' must be one of BUTTERWORTH, CHEBYSHEV, BESSEL";
+  }
+  if (p.scaling_matrix.size() != 9) {
+    return "'scaling_matrix' must have exactly 9 elements";
+  }
+  return std::nullopt;
+}
+
+// Called from the constructor. Declared once; never from on_configure (SPEC-05).
+void ImuFilterNode::declare_parameters() {
+  rcl_interfaces::msg::ParameterDescriptor cutoff;
+  cutoff.description = "Low-pass filter cutoff frequency in Hertz";
+  cutoff.floating_point_range.resize(1);
+  cutoff.floating_point_range[0].from_value = 0.1;
+  cutoff.floating_point_range[0].to_value = 1000.0;
+  cutoff.floating_point_range[0].step = 0.1;
+  rcl_interfaces::msg::ParameterDescriptor filter;
+  filter.description = "Filter algorithm variant";
+  filter.read_only = true;
+
+  Params initial;  // effective values include launch-file / command-line overrides
+  initial.cutoff_frequency = declare_parameter<double>("cutoff_frequency", 10.0, cutoff);
+  initial.filter_type = declare_parameter<std::string>("filter_type", "BUTTERWORTH", filter);
+  initial.scaling_matrix = declare_parameter<std::vector<double>>(
+    "scaling_matrix", std::vector<double>{1, 0, 0, 0, 1, 0, 0, 0, 1});
+  if (auto why = validate(initial)) {
+    throw rclcpp::exceptions::InvalidParameterValueException(*why);  // refuse to start
+  }
+  params_.publish([&](Params & slot) { slot = initial; });
+
+  param_handle_ = add_on_set_parameters_callback(
+    [this](const std::vector<rclcpp::Parameter> & updates) { return on_set_parameters(updates); });
+}
+
+// Runs on the parameter-service thread, concurrently with pipelines. It never touches state
+// and never blocks a pipeline: it builds a whole new snapshot and swaps it in atomically.
+rcl_interfaces::msg::SetParametersResult ImuFilterNode::on_set_parameters(
+  const std::vector<rclcpp::Parameter> & updates) {
+  auto reject = [this](std::string why) {
+    diag_.report(r2d::Code::ERR_RUN_103, why.c_str());
+    rcl_interfaces::msg::SetParametersResult r;
+    r.successful = false;
+    r.reason = std::move(why);
+    return r;
+  };
+
+  Params next = *params_.acquire();  // copy of the current snapshot
+  for (const auto & p : updates) {
+    const std::string & name = p.get_name();
+    if (name == "cutoff_frequency") {
+      next.cutoff_frequency = p.as_double();
+    } else if (name == "filter_type") {
+      return reject("'filter_type' is read-only and cannot be updated at runtime");
+    } else if (name == "scaling_matrix") {
+      next.scaling_matrix = p.as_double_array();
+    }
+  }
+  if (auto why = validate(next)) {
+    return reject(*why);  // whole batch rejected, nothing published
+  }
+  if (!params_.publish([&](Params & slot) { slot = next; })) {
+    return reject("parameter store busy, retry");
+  }
+  rcl_interfaces::msg::SetParametersResult ok;
+  ok.successful = true;  // rclcpp then broadcasts /parameter_events
+  return ok;
+}
+
+}  // namespace sensors::chassis
+----
+
+*Unverified against a ROS distribution (check before templating):* `declare_parameter<T>(name, default, descriptor)` returning the effective (override-aware) value, and `InvalidParameterValueException` as the way to refuse startup.
+
+=== 4.2. Language Support
+
+Only C++ has a reference snippet (§4.1). Python (`add_on_set_parameters_callback`) can implement the same all-or-nothing snapshot swap; the Python form appears in `SPEC-03` §5.2.
+
+== 5. Telemetry & Diagnostics Integration (`SPEC-04` / `SPEC-09`)
+
+1. **Parameter Change Events:** Successful modifications are broadcast by `rclcpp` on `/parameter_events`; the framework adds no tracepoint of its own for them.
+2. **Invalid Parameter Rejection Metrics:** Rejections increment a rejection counter (`SPEC-12` §7) and report warning diagnostic status frames (`SPEC-04`) under code `ERR_RUN_103`.
+3. **Static Verification:** `nodesmith` (`SPEC-04`) checks every default against its `validation` bounds, `one_of`, `fixed_length` and the `parameter_constraints` expressions; a violation is `ERR_SEM_106`.

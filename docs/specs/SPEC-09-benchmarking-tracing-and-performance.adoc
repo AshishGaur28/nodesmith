@@ -1,0 +1,184 @@
+= SPEC-09: Benchmarking, Tracing & Performance Specification
+:status: Draft
+:version: 0.1.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Executive Summary & Scope
+
+`SPEC-09` specifies the framework's observability, real-time performance instrumentation, tracing architecture, micro-benchmark driver generation, and the latency budget compiled into the generated node.
+
+To maintain ultra-low latency, bounded jitter, and predictable execution across mission-critical robotic and autonomous driving workloads, `SPEC-09` integrates zero-overhead Linux Trace Toolkit Next Generation (LTTng) tracepoints via `ros2_tracing`, standardizes generated micro-benchmark drivers (`google-benchmark`), and compiles latency budgets declared in the manifest (`SPEC-01`) into the generated node.
+
+[text]
+----
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Synthesized Node Pipeline                       │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ Callback Entry Hook: LTTng Tracepoint (`ros2_declarative:entry`)   │ │
+│ └──────────────────────────────────┬─────────────────────────────────┘ │
+│                                    │                                   │
+│                                    ▼                                   │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ AST Expression Pipeline Execution & Latency Timer (SPEC-02)        │ │
+│ └──────────────────────────────────┬─────────────────────────────────┘ │
+│                                    │                                   │
+│                                    ▼                                   │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ Callback Exit Hook: LTTng Tracepoint (`ros2_declarative:exit`)     │ │
+│ └──────────────────────────────────┬─────────────────────────────────┘ │
+└────────────────────────────────────┼───────────────────────────────────┘
+                                     │ Ring Buffer Trace Event Stream
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                      LTTng Session Daemon / Tracetools                 │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ Real-Time Latency Analysis, CTF Log Processing & Budget Audit     │ │
+│ └────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────┘
+----
+
+== 2. Manifest Telemetry Extensions (`SPEC-01`)
+
+Nodes configure tracing, latency budgets and benchmarks via the optional `[telemetry]` block (schema: `$defs/TelemetryExtension`; this block was called `[performance]` in earlier drafts):
+
+[source,toml]
+----
+[node]
+name = "lidar_tracker_node"
+namespace = "/perception/tracking"
+target_language = "cpp"
+
+[telemetry]
+enabled = true
+tracing_provider = "lttng"     # lttng | dummy
+latency_budget_us = 500        # per-callback soft budget (observability)
+jitter_tolerance_us = 50       # max acceptable variance between execution periods
+profiling_sample_rate_hz = 100
+on_budget_exceeded = "log_warning" # log_warning | raise_diagnostic | panic
+
+[[telemetry.benchmarks]]
+name = "tracking_bench"
+pipeline = "track_objects"     # a [[pipelines]].name
+iterations = 10000
+warmup_iterations = 1000
+----
+
+=== 2.1. Parameter Invariants
+
+* `enabled` (`bool`): Enables tracepoints at subscription callbacks, timer ticks and expression evaluation entry/exit. When `false` they compile to nothing (no clock reads, no checks).
+* `latency_budget_us` (`number`): Soft per-callback execution budget. It is the budget the generated probe checks (§4.1); the hard real-time deadline is separate (`SPEC-10` `deadline_us`) and may be tighter or looser.
+* `jitter_tolerance_us` (`number`): Maximum allowed variance between execution periods.
+* `on_budget_exceeded` (`enum`): Action on a budget breach. `panic` means the node treats the breach as a runtime fault: the pipeline escalates through the lifecycle error strategy after leaving the run gate (`SPEC-05` §6, `SPEC-12` §6), or the process exits when lifecycle is not enabled. `log_warning` only records `ERR_PRF_101`; `raise_diagnostic` also publishes it on `/diagnostics`. All three go through the preallocated diagnostics ring, never a logger call in the callback.
+* `benchmarks[].pipeline` names a pipeline; generators derive the benchmark driver from it, so no generated function names appear in the manifest.
+
+== 3. Tracing Architecture & LTTng Provider Semantics
+
+To eliminate runtime profiling overhead during production execution, tracing relies on static LTTng TP (Tracepoint) macros provided by `tracetools`. Disabled at compile time (`telemetry.enabled = false`), they and the probe of §4.1 are removed entirely. LTTng events that are compiled in but not enabled in a tracing session cost one predictable branch.
+
+=== 3.1. Standardized Framework Tracepoints
+
+[cols="2m,2m,4", options="header"]
+|===
+| Tracepoint Name | Argument Payloads | Functional Purpose
+
+| `ros2_declarative:node_init`
+| `const char* node_name`, `const char* ns`
+| Marks the completion of node structure and pipeline synthesis.
+
+| `ros2_declarative:callback_start`
+| `const char* topic_name`, `uint64_t sequence_id` (a per-callback-group counter, not a message field)
+| Timestamped entry into a message handling callback or AST pipeline.
+
+| `ros2_declarative:callback_end`
+| `const char* topic_name`, `uint64_t execution_time_ns`
+| Timestamped exit from callback with total execution duration payload.
+
+| `ros2_declarative:budget_violated`
+| `const char* topic_name`, `uint64_t duration_us`, `uint64_t budget_us`
+| Emitted when pipeline latency exceeds `latency_budget_us`.
+|===
+
+=== 3.2. Latency Budget Enforcement Mechanics
+
+1. **Inline Monotonic Clock Snapshot:** When a callback starts, a high-resolution monotonic timestamp ($T_{start}$) is captured.
+2. **Pipeline Execution:** Synthesized AST rules (`SPEC-02`) or user functions run to completion.
+3. **Elapsed Time Calculation:** $T_{elapsed} = T_{end} - T_{start}$.
+4. **Budget Audit:** If $T_{elapsed} > \text{latency\_budget\_us}$, execute `on_budget_exceeded` strategy and emit `ros2_declarative:budget_violated` plus runtime diagnostic `ERR_PRF_101`.
+
+== 4. Target Code Generation Patterns (`SPEC-03`)
+
+The framework synthesizer generates zero-cost conditional tracing and performance auditing wrappers for target execution runtimes.
+
+=== 4.1. C++ (`rclcpp`) Synthesized Instrumentated Pipeline Callback
+
+[source,cpp]
+----
+// Generated by nodesmith (SPEC-09 / SPEC-03 / SPEC-12). DO NOT EDIT DIRECTLY.
+#include <chrono>
+#include <cstdint>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include "lidar_tracker_node/runtime.hpp"
+#if ROS2_DECL_TRACING  // defined by the build only when telemetry.enabled = true
+#include <tracetools/tracetools.h>
+#endif
+
+namespace perception::tracking {
+
+// telemetry.on_budget_exceeded, telemetry.latency_budget_us (constants from the IR extension block)
+constexpr std::uint64_t kBudgetUs = 500;
+constexpr auto kOnBudgetExceeded = r2d::BudgetAction::LogWarning;
+
+#if ROS2_DECL_TRACING
+// RAII probe: two tracepoints and one budget check. No allocation, no locks, no logging.
+class CallbackProbe {
+public:
+  CallbackProbe(r2d::DiagRing & diag, const char * topic, std::uint64_t seq)
+  : diag_(diag), topic_(topic), start_(std::chrono::steady_clock::now()) {
+    TRACEPOINT(ros2_declarative_callback_start, topic_, seq);
+  }
+  ~CallbackProbe() {
+    const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - start_).count();
+    const std::uint64_t elapsed_us = static_cast<std::uint64_t>(ns) / 1000;
+    TRACEPOINT(ros2_declarative_callback_end, topic_, static_cast<std::uint64_t>(ns));
+    if (elapsed_us > kBudgetUs) {
+      TRACEPOINT(ros2_declarative_budget_violated, topic_, elapsed_us, kBudgetUs);
+      diag_.report(r2d::Code::ERR_PRF_101, topic_, kOnBudgetExceeded);  // drained by a non-RT thread
+    }
+  }
+private:
+  r2d::DiagRing & diag_;
+  const char * topic_;
+  std::chrono::steady_clock::time_point start_;
+};
+#else
+// Tracing disabled: no clock reads, no checks, nothing emitted.
+class CallbackProbe {
+public:
+  CallbackProbe(r2d::DiagRing &, const char *, std::uint64_t) noexcept {}
+};
+#endif
+
+void LidarTrackerNode::on_pointcloud_received(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
+  CallbackProbe probe(diag_, "/perception/raw_cloud", ++callback_seq_);  // callback_seq_: per-group counter
+  process_pointcloud_pipeline(*msg);  // SPEC-02 §7 steps 1-5
+}
+
+}  // namespace perception::tracking
+----
+
+*Unverified against a ROS distribution (check before templating):* custom `TRACEPOINT` event names require a project-owned LTTng provider; `tracetools` only exposes fixed ROS events.
+
+=== 4.2. Language Support
+
+Only C++ has a reference snippet (§4.1). Python can implement the same probe with `time.perf_counter_ns` and the `tracetools`/LTTng bindings of its distribution, but those bindings and their overhead are unverified; the requirement is unchanged (no allocation or logging in the callback, compiled out when disabled).
+
+== 5. Benchmark Driver Generation (`SPEC-04`)
+
+`nodesmith bench` (C++ targets only in this revision) generates sources; it builds and runs nothing.
+
+`bench --manifest M --output-dir D` writes one google-benchmark driver per `telemetry.benchmarks` entry. Each driver calls that pipeline's generated execution function with a value-initialised trigger message and parameter defaults, for `warmup_iterations` then `iterations` runs. The manifest names only the pipeline, never generated function names. Building and running the drivers, and judging their results against a budget or a baseline, is outside these specs.

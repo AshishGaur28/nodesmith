@@ -1,0 +1,169 @@
+= SPEC-01: User Manifest Schema & Syntax Specification
+:status: Frozen
+:version: 1.0.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Scope
+
+`SPEC-01` defines the user-authored node manifest: its structure, identifiers, references, and validation rules. The manifest is written in TOML (canonical), YAML or JSON and lowers into the `SPEC-00` IR. Expression syntax and semantics are in `SPEC-02`.
+
+The single normative machine-readable definition is `schemas/node_manifest.schema.json` (JSON Schema draft 2020-12). This document explains it and adds the rules JSON Schema cannot express (§6, §7). If they disagree, fix the document, not the schema silently.
+
+== 2. Format Rules & Multi-Format Parity
+
+1. TOML, YAML and JSON inputs describing the same data MUST lower to byte-identical IR (`SPEC-00` §5).
+2. YAML MUST be parsed with YAML 1.2 core-schema rules (so `no`/`off` are strings, not booleans); anchors, aliases, merge keys (`<<`) and custom tags are rejected, so a manifest is flat and explicit. `null`, TOML date-times, and duplicate keys (in any format) are rejected (`ERR_SYN_001`).
+3. Numbers use the JSON number grammar in every format: no hexadecimal, octal or binary, no digit separators (`1_000`), no `inf`/`nan`, no leading `+`, no sexagesimal (`ERR_SYN_001`). Numbers are coerced to the declared type before comparison: an integer literal is accepted for a `float32`/`float64` parameter (`10` == `10.0`); a float is never accepted for an integer type.
+4. Order of TOML tables/JSON object keys is not significant. Order of array entries is significant only for `expressions` (statement order).
+5. The manifest declares its format version with optional top-level `manifest_version = "1"`; consumers MUST reject a major version they don't support. Unknown keys are errors at every level: features live only in the blocks defined by their spec. The one exception is a key starting with `x-`, reserved for tooling: it is accepted on any table, ignored by every stage, never lowered, and never part of the IR or its hash.
+
+== 3. Reference Example
+
+Full file: `examples/02_filter_pipeline.toml` (also `01_simple_pubsub.toml`, `03_state_machine.toml`).
+
+[source,toml]
+----
+include::../../examples/02_filter_pipeline.toml[]
+----
+
+== 4. Blocks
+
+=== 4.1. `[node]`
+
+[cols="1m,1m,1,3", options="header"]
+|===
+| Key | Type | Required | Rule
+| `name` | string | yes | `^[a-z][a-z0-9_]*$`, max 64.
+| `namespace` | string | yes | Absolute: `/` or `/seg[/seg…]`, each `seg` `^[a-z][a-z0-9_]*$`. Relative namespaces are not allowed.
+| `target_language` | string | yes | `cpp` or `python` (`rust` is reserved for a later release and is rejected by the schema check). A build choice only: it is not part of the IR (`SPEC-00` §5); `--target-language` overrides it.
+| `rmw` | string | no | The RMW the package is generated for, default `fastrtps` (Jazzy's default, `rmw_fastrtps_cpp`). Only `fastrtps` is accepted in v1; `cyclonedds` and `zenoh` are reserved and rejected by the schema check. A build choice only, like `target_language`: not part of the IR; `--rmw` overrides it. See `SPEC-03` §2.1.
+| `version` | string | no | SemVer `MAJOR.MINOR.PATCH`, default `0.1.0`.
+| `description` | string | no | Copied into generated package metadata.
+|===
+
+=== 4.2. Identifiers
+
+All ids (`publishers`, `subscribers`, `services`, `pipelines`, `parameters`, `state_variables` keys) match `^[a-z][a-z0-9_]*$` (max 64). They form one symbol space per block kind but MUST be unique across publishers, subscribers and services together (`ERR_SEM_104`). They MUST NOT be reserved words of `SPEC-02` (`let state param msg req res true false`, built-in function names) or of any supported target language (C++ and Python keyword lists are part of the toolchain) (`ERR_SEM_104`).
+
+=== 4.3. `[parameters.<name>]`
+
+`type` (`CanonicalType`, `SPEC-02` §2.1), `default` (must match `type`), optional `read_only` (default `false`), `description`, and an optional `validation` table: `min`, `max`, `step` (numeric types), `one_of` (string/integer), `fixed_length` (arrays), `regex` (strings). Runtime enforcement is `SPEC-07`. A default that violates its own `validation` is `ERR_SEM_106`; a default of the wrong type is `ERR_SEM_102`.
+
+`[[parameter_constraints]]` entries (`expression`, optional `message`) are boolean `SPEC-02` expressions over `param.` references only, checked on every parameter update and against the defaults at build time.
+
+=== 4.4. `[state_variables.<name>]`
+
+`type` (`CanonicalType`) and `initial_value` (must match). State is initialised when the node becomes configured (lifecycle) or constructed, and re-initialised on cleanup. Read/write rules and atomicity are `SPEC-02` §4 and §7.
+
+=== 4.5. `[[publishers]]`, `[[subscribers]]`
+
+[cols="1m,1m,1,3", options="header"]
+|===
+| Key | Type | Required | Rule
+| `id` | identifier | yes | Symbol used by pipelines (`source`, `output_mapping`).
+| `topic` | string | yes | `^(~/\|/)?([A-Za-z0-9_]+/)*[A-Za-z0-9_]+$` (absolute, relative or private).
+| `type` | string | yes | `<pkg>/msg/<Name>`, e.g. `sensor_msgs/msg/Imu`. Service and action types are rejected here.
+| `qos` | table | no | `history` (`keep_last`\|`keep_all`, default `keep_last`), `depth` (int ≥ 1, default 10, ignored for `keep_all`), `reliability` (`reliable`\|`best_effort`, default `reliable`), `durability` (`volatile`\|`transient_local`, default `volatile`).
+| `zero_copy` | bool | no | Default `false`; see `SPEC-06`.
+| `loan_pool_capacity` | int ≥ 1 | no | Publishers only; loan slots for this publisher (`SPEC-06`).
+|===
+
+A subscriber does not name a pipeline; a pipeline names the subscriber it is triggered by.
+
+=== 4.6. `[[services]]`
+
+`id`, `name` (same pattern as `topic`), `type` (`<pkg>/srv/<Name>`). A service is served by exactly one pipeline whose trigger is `{type = "service", source = <id>}`; a service with no pipeline, or with more than one, is `ERR_SEM_105`. Service *clients* are not part of manifest version 1.
+
+=== 4.7. `[[pipelines]]`
+
+* `name` — identifier.
+* `callback_group` — optional name of a `realtime.callback_groups` entry (`SPEC-10`, `SPEC-12` §3).
+* `trigger` — one of:
+** `{ type = "subscriber", source = "<subscriber id>" }`
+** `{ type = "service", source = "<service id>" }`
+** `{ type = "timer", period_ms = <int ≥ 1>, clock = "steady"|"system"|"ros" }` (default clock `steady`)
+** `{ type = "startup" }`
+* `expressions` — array of `SPEC-02` statements, executed in order.
+* `output_mapping` — table: key `<publisher id>.<field path>` (or `res.<field path>` for a service pipeline), value a `SPEC-02` expression.
+
+A subscriber may trigger several pipelines; each runs independently on every message. A publisher may be written by several pipelines.
+
+=== 4.8. `[interfaces]`
+
+The framework never reads ROS `.msg`/`.srv` files and needs no ROS installation to validate a manifest. Every message or service field that a pipeline reads or writes is *declared* here (§7):
+
+[source,toml]
+----
+[interfaces."sensor_msgs/msg/Imu".fields]
+"header.frame_id" = "string"
+"linear_acceleration.z" = "float64"
+
+[interfaces."std_srvs/srv/Trigger".response]
+success = "bool"
+message = "string"
+
+[interfaces."my_interfaces/msg/LidarFrame"]
+fixed_size = true
+----
+
+Keys are type strings (`<pkg>/msg/<Name>` or `<pkg>/srv/<Name>`). A message entry has `fields` and optional `fixed_size` (default `false`); a service entry has `request` and `response`. Each field map is *dotted leaf path → ROS primitive type*: `bool`, `byte`, `char`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`, `int64`, `uint64`, `float32`, `float64`, `string`, `time`, `duration`, each optionally with `[]` for arrays.
+
+== 5. Extension Blocks
+
+Each optional feature is one top-level block, fully defined in `node_manifest.schema.json` (`$defs/*Extension`). The owning spec gives the semantics. No other top-level key is accepted. Adding a block means adding it to the schema, to `SPEC-04` Gate 1 and to this table in the same change. `examples/04_all_extensions.toml` uses every block and must validate against the schema.
+
+[cols="1m,1m,3", options="header"]
+|===
+| Block | Owner | Notes
+| `lifecycle` | `SPEC-05` | Managed-node state machine. Present with `enabled = true` (default) turns it on.
+| `shared_memory` | `SPEC-06` | Global pool settings; endpoints opt in with `zero_copy` and size with `loan_pool_capacity`.
+| `security` | `SPEC-08` | Enclave, keys, permissions.
+| `telemetry` | `SPEC-09` | Tracing, latency budget, benchmarks.
+| `concurrency` | `SPEC-12` | Executor thread count; callback groups are derived, not declared.
+| `realtime` | `SPEC-10` | POSIX scheduling, memory locking, executor and callback groups.
+| `simulation` | `SPEC-11` | Simulated clock and publisher fault injection.
+|===
+
+Conventions shared by every block: the on/off switch is `enabled`; enum values are lowercase (`realtime` scheduler names such as `SCHED_FIFO` and ROS class names such as `EventsExecutor` keep their native spelling); references to manifest entities use their `id`/`name`, never a topic string or a function name; durations carry a unit suffix (`_us`, `_ms`, `_sec`).
+
+=== 5.1. Cross-Block Rules
+
+Checked after the schema, before lowering (Stage 3). Each violation carries the code shown.
+
+1. *Zero copy* (`ERR_SHM_001`; type not declared `fixed_size` is `ERR_SHM_002`): any `zero_copy = true` endpoint requires `target_language = "cpp"`, an enabled `shared_memory` block, `history = keep_last` and `durability = volatile` on that endpoint, `loan_pool_capacity ≤ shared_memory.max_loaned_messages` when both are present, and a `shared_memory.middleware_backend` that the node's `rmw` supports (`SPEC-03` §2.1).
+2. *Callback groups:* `realtime.callback_groups[].name` values are unique (`ERR_SEM_104`); a pipeline's `callback_group` must name one of them (`ERR_SEM_105`) and requires an enabled `realtime` block. `on_deadline_miss = error_transition` requires an enabled `lifecycle` block. `concurrency.threads > 1` requires the effective executor to be `MultiThreadedExecutor` (`SPEC-12` §2). The last three are `ERR_RT_002`. Conflicting-pipeline placement is checked by `SPEC-12` §3 (`ERR_CNC_201`).
+3. *Simulation clock* (`ERR_SIM_002`): if `simulation.enabled` and `use_sim_time`, every `timer` trigger must use `clock = "ros"`. `simulation.fault_injection[].target` must name a publisher id (`ERR_SEM_105`), and a `bit_flip` target's message type must be declared `fixed_size` (`ERR_SIM_003`).
+4. *Release builds* (`ERR_SIM_001`): with `--mode=release` (`SPEC-04`), `simulation.enabled = true` is rejected unless the block sets `enabled_in_production = true`, and each fault-injection entry is rejected unless it sets `enabled_in_production = true`.
+5. *Telemetry:* `telemetry.benchmarks[].pipeline` names an existing pipeline (`ERR_SEM_105`).
+6. *Security* (`ERR_SEC_304`): permissions are derived from the manifest's publishers/subscribers plus the framework's infrastructure topics (`SPEC-08`). `security.permissions` entries with `allow = true` add grants for topics the node does not declare; `allow = false` removes a derived grant. A topic and direction given both ways, and an `allow = false` that removes nothing, are `ERR_SEC_304` (wildcard topics are not valid `TopicName`s, so the schema rejects them with `ERR_SYN_002`); restricted system topics are governed by `ERR_SEC_303` (`SPEC-08` §5). Nothing else widens access.
+7. *Target support* (`ERR_SEM_114`): in v1 a `python` target supports only the core blocks and `concurrency`. An enabled `lifecycle`, `shared_memory`, `security`, `telemetry`, `realtime` or `simulation` block with `target_language = "python"` is rejected (a block with `enabled = false` is ignored). Python support for them follows immediately after v1; `cpp` supports all blocks. `rust` is not a target.
+
+== 6. Cross-Reference Rules (validated after the schema, before lowering)
+
+1. Every trigger `source` names an existing subscriber/service of the matching kind; every `output_mapping` key's first segment names an existing publisher (or `res` in a service pipeline) — `ERR_SEM_105`.
+2. Every subscriber is used by at least one pipeline, and every service by exactly one; an unused subscriber is warning `ERR_SEM_110` (an error under `--strict`).
+3. `msg.`/`req.` are used only under matching triggers (`ERR_SEM_108`).
+4. Ids are unique and not reserved (`ERR_SEM_104`).
+5. Defaults and initial values match their types and `validation` (`ERR_SEM_102`, `ERR_SEM_106`).
+6. Every field path read or written (`msg.`, `req.`, `output_mapping` targets) is a declared leaf of its type (`ERR_SEM_107`); interface declarations are self-consistent (`ERR_SEM_112`); an entry for a type no endpoint uses is warning `ERR_SEM_113`.
+
+== 7. Interface Declarations
+
+The manifest is self-contained: field names and types come from `[interfaces]` (§4.8), not from ROS.
+
+1. *What to declare.* Exactly the fields the manifest touches: every `msg.<path>` / `req.<path>` read and every `<publisher>.<path>` / `res.<path>` written. A type used only as a pass-through (no field access) needs no entry, except that `fixed_size` must be declared for `zero_copy` endpoints and `bit_flip` fault targets (rule 4).
+2. *Paths.* Nested messages are addressed by leaf paths only (`header.frame_id`). A path is either a leaf or a prefix of another declared path, never both (`ERR_SEM_112`); using a prefix as a value is `ERR_SEM_102`. An undeclared path, or a type with no entry, is `ERR_SEM_107`.
+3. *Types.* Each declared ROS primitive maps to a canonical type (`SPEC-02` §2.1); `time` and `duration` are exposed to expressions as `float64` seconds and the generator converts to and from `sec`/`nanosec`.
+4. *Fixed size.* `fixed_size = true` asserts that the whole message contains no string or sequence anywhere. It is required for a `zero_copy` endpoint (`ERR_SHM_002`) and for a `bit_flip` target (`ERR_SIM_003`); an absent entry means "not fixed-size".
+5. *Unused entries* (no publisher, subscriber or service has that type) are warning `ERR_SEM_113`, an error under `--strict`.
+6. *Trust boundary.* The framework cannot check a declaration against ROS. Generators MUST emit field access using the declared path verbatim, with no dynamic lookup or silent conversion, so a wrong name or type fails when the generated package is compiled (C++) or on first use (Python). Only the manifest-level checks above are made at `nodesmith` time.
+7. `ERR_SEM_111` (interface definitions unavailable) is retired: definitions are always present in the manifest.
+
+== 8. Invariants
+
+1. *No target code in the manifest:* only the build-time choices `target_language` and `rmw` are target-related; no headers, snippets or language extensions (`SPEC-03` owns all generation).
+2. *Closed world:* every symbol and every message field the manifest uses resolves inside the manifest; the framework reads nothing from ROS.
+3. *Schema first:* a manifest that fails `node_manifest.schema.json` stops the pipeline at Stage 2 (`ERR_SYN_002`).

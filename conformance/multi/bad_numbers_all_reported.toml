@@ -1,0 +1,14 @@
+# Two number forms that JSON does not allow.
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[parameters.a]
+type = "int64"
+default = 0x10
+[parameters.b]
+type = "int64"
+default = 1_000

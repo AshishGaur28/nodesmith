@@ -1,0 +1,59 @@
+manifest_version: '1'
+node:
+  name: link_watchdog_node
+  namespace: /monitoring
+  target_language: python
+  version: 1.0.0
+  description: Reports whether heartbeats keep arriving within a timeout.
+parameters:
+  timeout_s:
+    type: float64
+    default: 2.0
+    description: Seconds without a heartbeat before the link is reported down.
+    validation:
+      min: 0.1
+state_variables:
+  last_seen:
+    type: float64
+    initial_value: 0.0
+subscribers:
+- id: heartbeat_sub
+  topic: /monitoring/heartbeat
+  type: std_msgs/msg/Empty
+publishers:
+- id: alive_pub
+  topic: /monitoring/link_alive
+  type: std_msgs/msg/Bool
+- id: age_pub
+  topic: /monitoring/heartbeat_age
+  type: std_msgs/msg/Float64
+interfaces:
+  std_msgs/msg/Bool:
+    fields:
+      data: bool
+  std_msgs/msg/Float64:
+    fields:
+      data: float64
+pipelines:
+- name: boot
+  expressions:
+  - state.last_seen = now_sec()
+  trigger:
+    type: startup
+- name: on_heartbeat
+  expressions:
+  - state.last_seen = now_sec()
+  trigger:
+    type: subscriber
+    source: heartbeat_sub
+- name: check_link
+  expressions:
+  - let age = now_sec() - state.last_seen
+  - let alive = age <= param.timeout_s
+  trigger:
+    type: timer
+    period_ms: 200
+    clock: steady
+  output_mapping:
+    alive_pub.data: alive
+    age_pub.data: age

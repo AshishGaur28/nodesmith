@@ -1,0 +1,14 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[concurrency]
+threads = 2
+[realtime]
+enabled = true
+policy = "SCHED_OTHER"
+[realtime.executor]
+type = "EventsExecutor"

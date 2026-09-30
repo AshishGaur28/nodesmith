@@ -1,0 +1,160 @@
+= SPEC-06: Shared Memory & Zero-Copy IPC Specification
+:status: Draft
+:version: 0.1.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Executive Summary & Scope
+
+`SPEC-06` specifies the architecture, operational semantics, zero-copy message allocation mechanics, memory pool lifecycle management, and shared-memory Inter-Process Communication (IPC) transport rules synthesized by the Nodesmith.
+
+To achieve ultra-low latency, bounded jitter, and deterministic throughput for high-frequency sensor pipelines (such as LiDAR point clouds, raw camera frames, and IMU arrays), `SPEC-06` standardizes the integration of loaned message interfaces (`rclcpp::LoanedMessage`, `iceoryx` / `CycloneDDS` loan APIs) into synthesized nodes (`SPEC-03`) governed by static manifests (`SPEC-01`).
+
+[text]
+----
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Publisher Process Scope                         │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ Loan Message Handle from Shared Memory Pool (`borrow_loaned_message`)│ │
+│ └──────────────────────────────────┬─────────────────────────────────┘ │
+│                                    │                                   │
+│                                    ▼                                   │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ Direct In-Place AST Expression Field Population (SPEC-02)          │ │
+│ └──────────────────────────────────┬─────────────────────────────────┘ │
+└────────────────────────────────────┼───────────────────────────────────┘
+                                     │ zero-copy borrow dispatch
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│              Shared Memory Ring Buffer Pool (`iceoryx_posh`)           │
+└────────────────────────────────────┬───────────────────────────────────┘
+                                     │ zero-copy read pointer
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Subscriber Process Scope                        │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ Read-Only Zero-Copy Pointer Access (`rclcpp::LoanedMessage<T>`)   │ │
+│ └────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────┘
+----
+
+== 2. Shared Memory & Zero-Copy Manifest Extensions (`SPEC-01`)
+
+Nodes configure zero-copy IPC through the optional `[shared_memory]` block plus per-endpoint flags (schema: `$defs/SharedMemoryExtension`, `Publisher`, `Subscriber`):
+
+[source,toml]
+----
+[node]
+name = "lidar_filter_node"
+namespace = "/perception/chassis"
+target_language = "cpp"
+
+[shared_memory]
+enabled = true                 # default true when the block is present
+middleware_backend = "rmw_default" # rmw_default | iceoryx | cyclonedds_shm (only what the node's rmw supports, SPEC-03 §2.1)
+segment_size_bytes = 16777216  # 16 MB pre-allocated pool
+max_loaned_messages = 8
+fallback_to_heap = true        # heap copy if the loan pool is depleted or loans are unsupported
+
+[[subscribers]]
+id = "raw_sub"
+topic = "/perception/raw_frame"
+type = "my_interfaces/msg/LidarFrame"
+zero_copy = true
+
+[[publishers]]
+id = "filtered_pub"
+topic = "/perception/filtered_frame"
+type = "my_interfaces/msg/LidarFrame"
+zero_copy = true
+loan_pool_capacity = 4
+
+[interfaces."my_interfaces/msg/LidarFrame"]
+fixed_size = true          # required for zero_copy (ERR_SHM_002)
+----
+
+=== 2.1. Parameter Invariants
+
+* `enabled` (`bool`): Master switch. `false` (or an absent block) disables loaned messages everywhere; a `zero_copy = true` endpoint then fails validation with `ERR_SHM_001` (`SPEC-01` §5.1 rule 1).
+* `middleware_backend` (`enum`): Underlying RMW shared-memory provider.
+* `segment_size_bytes` (`uint64`): Total fixed-size pool segment.
+* `max_loaned_messages` (`int`): Node-wide cap; each publisher's `loan_pool_capacity` must not exceed it.
+* `fallback_to_heap` (`bool`): Behaviour when a loan cannot be obtained (§3.1 rule 4).
+* Endpoint `zero_copy = true` requires `history = keep_last` and `durability = volatile`.
+* Runtime requirements, provided by whoever runs the node and not generated: an RMW with shared-memory support, a running `iox-roudi` daemon when the backend needs one, and a shared-memory area of at least `segment_size_bytes`.
+* Only *fixed-size* message types can be loaned (no unbounded strings or sequences, so not `PointCloud2`, `Image` or anything with a `std_msgs/Header`-style `frame_id`). The property is declared, not inferred: the message type must have `fixed_size = true` in the manifest's `[interfaces]` (`SPEC-01` §7), otherwise `ERR_SHM_002`. The framework cannot verify the declaration; if it is wrong the RMW refuses the loan and the node reports `ERR_SHM_102` and takes the heap path.
+
+== 3. Memory Allocation, Loan Lifecycles & Safety Invariants
+
+To guarantee deterministic performance without silent memory leaks or corrupt pointers, zero-copy pipelines MUST strictly enforce four lifetime and allocation rules.
+
+=== 3.1. The 4 Zero-Copy Lifetime Invariants
+
+1. **In-Place Mutation Invariant:** Synthesized expression pipelines (`SPEC-02`) MUST write directly into borrowed loan buffers. Intermediate heap allocations or temporary stack copies of large payloads are forbidden.
+2. **Single-Ownership Transfer Invariant:** Once `publish(std::move(loaned_msg))` is called, the publisher process relinquishes write access immediately. Subsequent mutations to that handle are impossible in generated code (the generator emits the move), so no diagnostic exists for them.
+3. **Bounded Loan Duration:** Subscriber callbacks processing borrowed zero-copy payloads MUST NOT retain read pointers beyond callback scope execution unless explicitly wrapped in a shared memory handle manager.
+4. **Fallback Guard Mechanics:** If loan pool allocation fails (e.g., `borrow_loaned_message()` returns `nullptr` or throws), the node MUST either fall back to heap allocation or drop the frame according to `fallback_to_heap`. Each event is reported as runtime diagnostic `ERR_SHM_101` (pool exhausted) or `ERR_SHM_102` (loans unsupported by the RMW).
+
+== 4. Target Code Generation Patterns (`SPEC-03`)
+
+The framework synthesizer generates zero-copy memory management loops tailored to each target language runtime.
+
+=== 4.1. C++ (`rclcpp`) Synthesized Zero-Copy Publish Step
+
+[source,cpp]
+----
+// Generated by nodesmith (SPEC-06 / SPEC-03). DO NOT EDIT DIRECTLY.
+// Message type is fixed-size (ERR_SHM_002 otherwise): plain arrays, no strings or sequences.
+#include <cstring>
+#include <exception>
+#include <memory>
+#include <rclcpp/rclcpp.hpp>
+#include <my_interfaces/msg/lidar_frame.hpp>
+
+namespace perception::chassis {
+
+using Frame = my_interfaces::msg::LidarFrame;
+
+// Called at SPEC-02 §7 step 5, after evaluation and the fault check, so a numeric fault
+// never holds a loan. `in` is the trigger message.
+void LidarFilterNode::publish_filtered(const Frame & in) {
+  if (filtered_pub_->can_loan_messages()) {
+    try {
+      auto loan = filtered_pub_->borrow_loaned_message();
+      Frame & out = loan.get();
+      out = Frame{};                                    // value-initialise in place (shared memory)
+      out.stamp = in.stamp;
+      out.count = in.count;
+      std::memcpy(out.ranges.data(), in.ranges.data(), sizeof(out.ranges));  // fixed-size copy
+      filtered_pub_->publish(std::move(loan));          // ownership passes to the middleware
+      return;
+    } catch (const std::exception &) {
+      diag_.report(r2d::Code::ERR_SHM_101, "filtered_pub");  // pool exhausted (borrow threw)
+    }
+  } else {
+    diag_.report(r2d::Code::ERR_SHM_102, "filtered_pub");    // RMW cannot loan
+  }
+  if (!fallback_to_heap_) {
+    return;  // configured to drop the frame
+  }
+  // Heap path allocates: with realtime.enabled set fallback_to_heap = false (SPEC-10 §3.1 rule 2).
+  filtered_pub_->publish(std::make_unique<Frame>(in));
+}
+
+}  // namespace perception::chassis
+----
+
+*Unverified against a ROS distribution (check before templating):* that `borrow_loaned_message()` throws (rather than returning an empty loan) when the pool is exhausted, and that `can_loan_messages()` is false for non-fixed-size types on the chosen RMW.
+
+=== 4.2. Language Support
+
+Only C++ (`rclcpp` loaned messages) is supported in this revision. `zero_copy = true` with another target is `ERR_SHM_001`; a Python loan API is not specified because its availability has not been verified.
+
+== 5. Verification, Diagnostics & Performance Budgets (`SPEC-04` / `SPEC-09`)
+
+Static analysis and runtime checks enforced by `nodesmith` (`SPEC-04`) for zero-copy pipelines:
+
+1. **Loan Depletion Telemetry:** every failed or unsupported loan is reported as runtime diagnostic `ERR_SHM_101` / `ERR_SHM_102` (`SPEC-04` §4.5); the counters feed `/diagnostics`.
+2. **Pool Sizing Guard (`ERR_SHM_003`):** For fixed-size message types, static verification errors if `loan_pool_capacity × message size` exceeds `segment_size_bytes`. The message size is the sum of the declared leaf field sizes in bytes (`bool`, `byte`, `char`, `int8`, `uint8` = 1; `int16`, `uint16` = 2; `int32`, `uint32`, `float32` = 4; `int64`, `uint64`, `float64`, `time`, `duration` = 8). It ignores padding, so it is a lower bound: the check can accept a pool the RMW later finds too small, never the reverse.

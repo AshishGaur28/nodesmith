@@ -1,0 +1,10 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[parameters.k]
+type = "string"
+default = 1979-05-27T07:32:00Z

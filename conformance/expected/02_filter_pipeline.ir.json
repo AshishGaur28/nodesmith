@@ -1,0 +1,258 @@
+{
+  "concurrency": {
+    "callback_groups": [
+      {
+        "explicit": false,
+        "name": "state_domain_1",
+        "type": "MutuallyExclusive"
+      }
+    ],
+    "executor": "SingleThreadedExecutor",
+    "threads": 1
+  },
+  "execution_dags": [
+    {
+      "assignments": [
+        {
+          "source_node_id": "n7",
+          "target_field_path": "filtered_imu_pub.header.frame_id"
+        },
+        {
+          "source_node_id": "n3",
+          "target_field_path": "filtered_imu_pub.linear_acceleration.z"
+        },
+        {
+          "source_node_id": "n10",
+          "target_field_path": "status_pub.data"
+        }
+      ],
+      "callback_group": "state_domain_1",
+      "id": "filter_imu",
+      "nodes": [
+        {
+          "attrs": {
+            "path": "linear_acceleration.z",
+            "root": "msg"
+          },
+          "id": "n0",
+          "op": "input",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "name": "prev_z"
+          },
+          "id": "n1",
+          "op": "state",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "name": "alpha"
+          },
+          "id": "n2",
+          "op": "param",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "function": "low_pass"
+          },
+          "id": "n3",
+          "label": "z",
+          "op": "call",
+          "operands": [
+            "n0",
+            "n1",
+            "n2"
+          ],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "function": "abs"
+          },
+          "id": "n4",
+          "op": "call",
+          "operands": [
+            "n3"
+          ],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "name": "max_accel"
+          },
+          "id": "n5",
+          "op": "param",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "operator": ">"
+          },
+          "id": "n6",
+          "label": "over",
+          "op": "binary",
+          "operands": [
+            "n4",
+            "n5"
+          ],
+          "type_symbol": "bool"
+        },
+        {
+          "attrs": {
+            "path": "header.frame_id",
+            "root": "msg"
+          },
+          "id": "n7",
+          "op": "input",
+          "operands": [],
+          "type_symbol": "string"
+        },
+        {
+          "attrs": {
+            "value": "OVERLIMIT"
+          },
+          "id": "n8",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "string"
+        },
+        {
+          "attrs": {
+            "value": "OK"
+          },
+          "id": "n9",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "string"
+        },
+        {
+          "id": "n10",
+          "op": "select",
+          "operands": [
+            "n6",
+            "n8",
+            "n9"
+          ],
+          "type_symbol": "string"
+        }
+      ],
+      "state_writes": [
+        {
+          "source_node_id": "n3",
+          "state_name": "prev_z"
+        }
+      ],
+      "trigger": {
+        "kind": "subscriber",
+        "source_id": "raw_imu_sub"
+      }
+    }
+  ],
+  "extensions": {},
+  "interface_types": [
+    {
+      "fields": {
+        "header.frame_id": "string",
+        "linear_acceleration.z": "float64"
+      },
+      "fixed_size": false,
+      "kind": "msg",
+      "type_symbol": "sensor_msgs/msg/Imu"
+    },
+    {
+      "fields": {
+        "data": "string"
+      },
+      "fixed_size": false,
+      "kind": "msg",
+      "type_symbol": "std_msgs/msg/String"
+    }
+  ],
+  "interfaces": {
+    "publishers": [
+      {
+        "identifier": "filtered_imu_pub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/sensor/imu/filtered",
+        "type_symbol": "sensor_msgs/msg/Imu",
+        "zero_copy": false
+      },
+      {
+        "identifier": "status_pub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/sensor/imu/status",
+        "type_symbol": "std_msgs/msg/String",
+        "zero_copy": false
+      }
+    ],
+    "services": [],
+    "subscribers": [
+      {
+        "identifier": "raw_imu_sub",
+        "qos": {
+          "depth": 5,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "best_effort"
+        },
+        "topic": "/sensor/imu/raw",
+        "type_symbol": "sensor_msgs/msg/Imu",
+        "zero_copy": false
+      }
+    ]
+  },
+  "ir_version": "1.0.0",
+  "node_meta": {
+    "description": "Low-pass filters IMU acceleration and flags over-limit readings.",
+    "name": "imu_filter_node",
+    "namespace": "/sensors/chassis",
+    "version": "1.0.0"
+  },
+  "parameter_constraints": [],
+  "parameters": [
+    {
+      "canonical_type": "float64",
+      "default_value": 0.85,
+      "description": "Low-pass smoothing factor.",
+      "name": "alpha",
+      "read_only": false,
+      "validation": {
+        "max": 1.0,
+        "min": 0.0
+      }
+    },
+    {
+      "canonical_type": "float64",
+      "default_value": 20.0,
+      "name": "max_accel",
+      "read_only": false,
+      "validation": {
+        "min": 0.0
+      }
+    }
+  ],
+  "state_buffers": [
+    {
+      "canonical_type": "float64",
+      "initial_value": 0.0,
+      "name": "prev_z"
+    }
+  ]
+}

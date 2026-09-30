@@ -1,0 +1,12 @@
+# Three independent schema violations, reported in document order.
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "relative"
+target_language = "cpp"
+colour = "red"
+
+[state_variables.x]
+type = "float"
+initial_value = 0

@@ -1,0 +1,387 @@
+{
+  "concurrency": {
+    "callback_groups": [
+      {
+        "explicit": false,
+        "name": "state_domain_1",
+        "type": "MutuallyExclusive"
+      }
+    ],
+    "executor": "SingleThreadedExecutor",
+    "threads": 1
+  },
+  "execution_dags": [
+    {
+      "assignments": [
+        {
+          "source_node_id": "n2",
+          "target_field_path": "output_pub.data"
+        }
+      ],
+      "callback_group": "state_domain_1",
+      "id": "apply_gain",
+      "nodes": [
+        {
+          "attrs": {
+            "path": "data",
+            "root": "msg"
+          },
+          "id": "n0",
+          "op": "input",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "name": "gain"
+          },
+          "id": "n1",
+          "op": "state",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "operator": "*"
+          },
+          "id": "n2",
+          "label": "scaled",
+          "op": "binary",
+          "operands": [
+            "n0",
+            "n1"
+          ],
+          "type_symbol": "float64"
+        }
+      ],
+      "state_writes": [],
+      "trigger": {
+        "kind": "subscriber",
+        "source_id": "input_sub"
+      }
+    },
+    {
+      "assignments": [
+        {
+          "source_node_id": "n0",
+          "target_field_path": "res.gain"
+        }
+      ],
+      "callback_group": "state_domain_1",
+      "id": "handle_get",
+      "nodes": [
+        {
+          "attrs": {
+            "name": "gain"
+          },
+          "id": "n0",
+          "op": "state",
+          "operands": [],
+          "type_symbol": "float64"
+        }
+      ],
+      "state_writes": [],
+      "trigger": {
+        "kind": "service",
+        "source_id": "get_gain_srv"
+      }
+    },
+    {
+      "assignments": [
+        {
+          "source_node_id": "n1",
+          "target_field_path": "res.message"
+        },
+        {
+          "source_node_id": "n2",
+          "target_field_path": "res.success"
+        }
+      ],
+      "callback_group": "state_domain_1",
+      "id": "handle_reset",
+      "nodes": [
+        {
+          "attrs": {
+            "value": 1.0
+          },
+          "id": "n0",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "value": "gain reset"
+          },
+          "id": "n1",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "string"
+        },
+        {
+          "attrs": {
+            "value": true
+          },
+          "id": "n2",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "bool"
+        }
+      ],
+      "state_writes": [
+        {
+          "source_node_id": "n0",
+          "state_name": "gain"
+        }
+      ],
+      "trigger": {
+        "kind": "service",
+        "source_id": "reset_gain_srv"
+      }
+    },
+    {
+      "assignments": [
+        {
+          "source_node_id": "n6",
+          "target_field_path": "res.accepted"
+        },
+        {
+          "source_node_id": "n9",
+          "target_field_path": "res.applied"
+        }
+      ],
+      "callback_group": "state_domain_1",
+      "id": "handle_set",
+      "nodes": [
+        {
+          "attrs": {
+            "path": "gain",
+            "root": "req"
+          },
+          "id": "n0",
+          "op": "input",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "value": 0.0
+          },
+          "id": "n1",
+          "op": "const",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "operator": ">="
+          },
+          "id": "n2",
+          "op": "binary",
+          "operands": [
+            "n0",
+            "n1"
+          ],
+          "type_symbol": "bool"
+        },
+        {
+          "attrs": {
+            "path": "gain",
+            "root": "req"
+          },
+          "id": "n3",
+          "op": "input",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "name": "max_gain"
+          },
+          "id": "n4",
+          "op": "param",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "operator": "<="
+          },
+          "id": "n5",
+          "op": "binary",
+          "operands": [
+            "n3",
+            "n4"
+          ],
+          "type_symbol": "bool"
+        },
+        {
+          "attrs": {
+            "operator": "&&"
+          },
+          "id": "n6",
+          "label": "ok",
+          "op": "binary",
+          "operands": [
+            "n2",
+            "n5"
+          ],
+          "type_symbol": "bool"
+        },
+        {
+          "attrs": {
+            "path": "gain",
+            "root": "req"
+          },
+          "id": "n7",
+          "op": "input",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "name": "gain"
+          },
+          "id": "n8",
+          "op": "state",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "id": "n9",
+          "label": "next",
+          "op": "select",
+          "operands": [
+            "n6",
+            "n7",
+            "n8"
+          ],
+          "type_symbol": "float64"
+        }
+      ],
+      "state_writes": [
+        {
+          "source_node_id": "n9",
+          "state_name": "gain"
+        }
+      ],
+      "trigger": {
+        "kind": "service",
+        "source_id": "set_gain_srv"
+      }
+    }
+  ],
+  "extensions": {},
+  "interface_types": [
+    {
+      "kind": "srv",
+      "request": {},
+      "response": {
+        "gain": "float64"
+      },
+      "type_symbol": "my_interfaces/srv/GetGain"
+    },
+    {
+      "kind": "srv",
+      "request": {
+        "gain": "float64"
+      },
+      "response": {
+        "accepted": "bool",
+        "applied": "float64"
+      },
+      "type_symbol": "my_interfaces/srv/SetGain"
+    },
+    {
+      "fields": {
+        "data": "float64"
+      },
+      "fixed_size": false,
+      "kind": "msg",
+      "type_symbol": "std_msgs/msg/Float64"
+    },
+    {
+      "kind": "srv",
+      "request": {},
+      "response": {
+        "message": "string",
+        "success": "bool"
+      },
+      "type_symbol": "std_srvs/srv/Trigger"
+    }
+  ],
+  "interfaces": {
+    "publishers": [
+      {
+        "identifier": "output_pub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/processing/output",
+        "type_symbol": "std_msgs/msg/Float64",
+        "zero_copy": false
+      }
+    ],
+    "services": [
+      {
+        "identifier": "get_gain_srv",
+        "service_name": "/processing/get_gain",
+        "type_symbol": "my_interfaces/srv/GetGain"
+      },
+      {
+        "identifier": "reset_gain_srv",
+        "service_name": "/processing/reset_gain",
+        "type_symbol": "std_srvs/srv/Trigger"
+      },
+      {
+        "identifier": "set_gain_srv",
+        "service_name": "/processing/set_gain",
+        "type_symbol": "my_interfaces/srv/SetGain"
+      }
+    ],
+    "subscribers": [
+      {
+        "identifier": "input_sub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/processing/input",
+        "type_symbol": "std_msgs/msg/Float64",
+        "zero_copy": false
+      }
+    ]
+  },
+  "ir_version": "1.0.0",
+  "node_meta": {
+    "description": "Scales an input value by a gain that is set and read through services.",
+    "name": "gain_node",
+    "namespace": "/processing",
+    "version": "1.0.0"
+  },
+  "parameter_constraints": [],
+  "parameters": [
+    {
+      "canonical_type": "float64",
+      "default_value": 10.0,
+      "description": "Largest gain a set_gain request may apply.",
+      "name": "max_gain",
+      "read_only": false,
+      "validation": {
+        "min": 0.0
+      }
+    }
+  ],
+  "state_buffers": [
+    {
+      "canonical_type": "float64",
+      "initial_value": 1.0,
+      "name": "gain"
+    }
+  ]
+}

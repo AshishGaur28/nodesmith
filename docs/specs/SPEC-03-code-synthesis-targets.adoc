@@ -1,0 +1,372 @@
+= SPEC-03: Multi-Language Code Synthesis & Target Code Emission Specification
+:status: Draft
+:version: 0.1.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Executive Summary & Scope
+
+`SPEC-03` specifies the rules, template architectures, code synthesis transformations, and target code emission standards for turning the canonical Intermediate Representation (IR) AST (`SPEC-00`) into production-grade target source code.
+
+Supported target output targets include:
+
+* **C++17 / C++20 (`rclcpp`):** High-performance, zero-allocation runtime paths, header/source separation, CMake/ament_cmake package layouts.
+* **Python 3 (`rclpy`):** Idiomatic, readable code using standard ROS 2 setup package structures.
+
+[text]
+----
+┌────────────────────────────────────────────────────────┐
+│  SPEC-00 Canonical IR AST                              │
+└───────────────────────────┬────────────────────────────┘
+                            │
+                            │ Target Selector & Synthesis Engine (SPEC-03)
+                            ▼
+           ┌────────────────┴────────────────┐
+           │                                 │
+           ▼                                 ▼
+┌──────────────────┐              ┌───────────────┐
+│  C++ Target      │              │ Python Target │
+│  (rclcpp)        │              │ (rclpy)       │
+└──────────────────┘              └───────────────┘
+----
+
+== 2. Code Generation Invariants & Guarantees
+
+1. **Determinism:** Given identical IR (same IR hash, `SPEC-00` §5), target language and generator version (which includes pinned formatter versions), code synthesis MUST yield bit-for-bit identical source code across all operating systems.
+2. **Zero Manual Modification Rule:** Synthesized source files are immutable outputs of the build system. User-customized logic must be attached via SPEC-02 expression definitions or linked modular block headers—never edited directly in generated outputs.
+3. **Target Parity:** Code generated for standard publisher, subscriber, service, parameter, and timer logic across C++ and Python must satisfy identical functional behavioral tests. In v1 the Python target supports only the core blocks and `concurrency` (`SPEC-01` §5.1 rule 7, `ERR_SEM_114`); extension parity for Python is the first work after v1.
+4. **Clean Abstractions:** Target source files MUST NOT embed generic template strings or leftover generator variables. Generated output must look like hand-crafted, clean idiomatic source code.
+
+=== 2.1. RMW Binding
+
+The RMW is a generation-time choice (`node.rmw`, `--rmw`, `SPEC-01` §4.1), never a run-time one. The generator emits a package for exactly one RMW and nothing else:
+
+1. The generated `package.xml` has one `<exec_depend>` on that RMW's package (`rmw_fastrtps_cpp` for `fastrtps`) and none on any other RMW.
+2. Generated sources use only the client-library API (`rclcpp`, `rclpy`). They contain no RMW-specific header, symbol or `RMW_IMPLEMENTATION` handling, so adding an RMW later means adding a table row and a package dependency, not changing the manifest or the IR.
+3. Features that depend on the RMW are checked against this capability table at generation time. The row for an unsupported feature is an error with the feature's own code; nothing is emitted "best effort".
+
+[cols="1m,1,1,1", options="header"]
+|===
+| RMW | Loaned messages (`zero_copy`, `SPEC-06`) | `shared_memory.middleware_backend` values | Security enclaves (`SPEC-08`)
+| `fastrtps` | Fixed-size types only | `rmw_default` | Yes
+|===
+
+A `middleware_backend` the chosen RMW does not list (for example `iceoryx` with `fastrtps`) is `ERR_SHM_001`.
+
+Only `fastrtps` exists in v1; `cyclonedds` and `zenoh` are reserved. The later phase that makes the RMW configurable adds rows and their per-RMW generation rules here.
+
+*Unverified against a ROS distribution (check before templating):* that `rmw_fastrtps_cpp` is the sole RMW package the generated package needs to declare on Jazzy, and the capability row values.
+
+== 3. Type & Symbol Mapping Matrix
+
+To ensure target language compatibility, IR primitive types map strictly according to the following matrix:
+
+[cols="1m,2m,2m", options="header"]
+|===
+| Canonical IR Type | C++ Target (`rclcpp`) | Python Target (`rclpy`)
+
+| `bool`
+| `bool`
+| `bool`
+
+| `int64`
+| `int64_t`
+| `int`
+
+| `float64`
+| `double`
+| `float`
+
+| `string`
+| `std::string`
+| `str`
+
+| `int32`
+| `int32_t`
+| `int`
+
+| `float32`
+| `float`
+| `float` (stored as double; rounded to 32 bits at every `float32` sink)
+
+| `bytes`
+| `std::vector<uint8_t>`
+| `bytes`
+
+| `T[]` (array of a scalar `T`)
+| `std::vector<T>`
+| `list[T]`
+|===
+
+The canonical type set is defined once in `SPEC-02` §2.1; this matrix must cover exactly those types. Integer arithmetic wraps at operand width on all targets (`SPEC-02` §6), so the Python generator must emulate/wrap explicitly.
+
+== 4. C++ Target (`rclcpp`) Emission Architecture
+
+=== 4.1. File Hierarchy Standards
+Generated C++ packages adhere strictly to `ament_cmake` standards:
+
+[text]
+----
+<node_name>/
+├── CMakeLists.txt
+├── package.xml
+├── include/
+│   └── <node_name>/
+│       ├── <node_name>_node.hpp
+│       └── runtime.hpp        # SnapshotRing, RunGate, DiagRing (SPEC-12)
+└── src/
+    ├── <node_name>_node.cpp
+    └── main.cpp
+----
+
+=== 4.2. Memory & Real-Time Guarantees
+* **Pre-allocation:** All buffers, QoS profiles, subscriber/publisher handles, state objects and callback groups MUST be created during node initialization (constructor, or `on_configure` for lifecycle nodes, `SPEC-05`) and never inside a callback.
+* **Zero Allocation in Callbacks:** With `realtime.enabled` (`SPEC-10`), callback paths MUST NOT allocate (no `new`, `make_shared`, container growth, string building, or logging). Without it, allocation is permitted but discouraged, and the generator keeps to preallocated message objects where the message type allows.
+* **RAII Encapsulation:** Resource acquisition, thread handles, and ROS callbacks use strict RAII wrappers.
+
+=== 4.3. Reference Output Template Snippet (C++ Header and Pipeline Source)
+
+[source,cpp]
+----
+// Generated by nodesmith (SPEC-03). DO NOT EDIT DIRECTLY.
+// Manifest: examples/02_filter_pipeline.toml
+#ifndef IMU_FILTER_NODE_NODE_HPP_
+#define IMU_FILTER_NODE_NODE_HPP_
+
+#include <memory>
+#include <vector>
+#include <rclcpp/rclcpp.hpp>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/string.hpp>
+#include "imu_filter_node/runtime.hpp"  // r2d::SnapshotRing, RunGate, DiagRing, low_pass (SPEC-12)
+
+namespace sensors::chassis {
+
+struct Params { double alpha{0.85}; double max_accel{20.0}; };  // [parameters.*]
+struct State  { double prev_z{0.0}; };                          // [state_variables.*]
+
+class ImuFilterNode : public rclcpp::Node {
+public:
+  explicit ImuFilterNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+
+private:
+  void declare_parameters();       // constructor only: declaration, no allocation of pipeline resources
+  rcl_interfaces::msg::SetParametersResult on_set_parameters(const std::vector<rclcpp::Parameter> & updates);
+  void create_interfaces();
+  void filter_imu(const sensor_msgs::msg::Imu & msg);  // pipeline `filter_imu` (SPEC-02 §7)
+
+  r2d::SnapshotRing<Params, 3> params_;   // 3 = threads (1) + 2 (SPEC-12 §5)
+  State state_;                           // touched only by callback group state_domain_1 (SPEC-12 §3)
+  r2d::RunGate gate_;
+  r2d::DiagRing diag_;
+
+  rclcpp::CallbackGroup::SharedPtr group_state_domain_1_;  // MutuallyExclusive, from the IR
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr raw_imu_sub_;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr filtered_imu_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
+  OnSetParametersCallbackHandle::SharedPtr param_handle_;
+};
+
+}  // namespace sensors::chassis
+
+#endif  // IMU_FILTER_NODE_NODE_HPP_
+----
+
+The matching source excerpt shows the execution order of `SPEC-02` §7 and the group/gate/snapshot use of `SPEC-12`:
+
+[source,cpp]
+----
+// Generated by nodesmith (SPEC-03). DO NOT EDIT DIRECTLY.
+#include "imu_filter_node/imu_filter_node_node.hpp"
+#include <cmath>
+
+namespace sensors::chassis {
+
+ImuFilterNode::ImuFilterNode(const rclcpp::NodeOptions & options)
+: Node("imu_filter_node", "/sensors/chassis", options), params_(Params{}) {
+  declare_parameters();
+  create_interfaces();
+  gate_.open();  // a non-lifecycle node is active once constructed (SPEC-12 §6)
+}
+
+void ImuFilterNode::create_interfaces() {
+  // Default `automatically_add_to_executor_with_node = true`: the group is picked up with the node.
+  group_state_domain_1_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  rclcpp::SubscriptionOptions sub_opts;
+  sub_opts.callback_group = group_state_domain_1_;
+
+  raw_imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
+    "/sensor/imu/raw", rclcpp::QoS(5).best_effort(),
+    [this](sensor_msgs::msg::Imu::ConstSharedPtr m) { filter_imu(*m); }, sub_opts);
+  filtered_imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("/sensor/imu/filtered", rclcpp::QoS(10));
+  status_pub_ = create_publisher<std_msgs::msg::String>("/sensor/imu/status", rclcpp::QoS(10));
+}
+
+void ImuFilterNode::filter_imu(const sensor_msgs::msg::Imu & msg) {
+  r2d::RunGate::Scope run(gate_);        // dropped unless Active (SPEC-12 §6)
+  if (!run) return;
+  const auto params = params_.acquire(); // one parameter snapshot for the whole execution (SPEC-12 §5)
+
+  // Step 2: evaluate in manifest order; locals are const. low_pass yields NaN if alpha is outside [0,1].
+  const double z = r2d::low_pass(msg.linear_acceleration.z, state_.prev_z, params->alpha);
+  const bool over = std::abs(z) > params->max_accel;
+  // Step 3: staged state write.
+  const double next_prev_z = z;
+
+  // Step 4: a NaN/Inf reaching a sink aborts the execution: no commit, no publication.
+  if (!std::isfinite(z) || !std::isfinite(next_prev_z)) {
+    diag_.report(r2d::Code::ERR_RUN_101, "filter_imu");  // preallocated ring, never logs here
+    return;
+  }
+
+  // Step 5: commit, then publish in ascending publisher-id order.
+  state_.prev_z = next_prev_z;
+
+  sensor_msgs::msg::Imu filtered_imu_pub_msg;  // value-initialised
+  filtered_imu_pub_msg.header.frame_id = msg.header.frame_id;
+  filtered_imu_pub_msg.linear_acceleration.z = z;
+  filtered_imu_pub_->publish(filtered_imu_pub_msg);
+
+  std_msgs::msg::String status_pub_msg;
+  status_pub_msg.data = over ? "OVERLIMIT" : "OK";
+  status_pub_->publish(status_pub_msg);
+}
+
+}  // namespace sensors::chassis
+----
+
+*Unverified against a ROS distribution (check before templating):* `rclcpp::QoS(5).best_effort()` chaining, and that callback groups created before the node is added to an executor are picked up with `automatically_add_to_executor_with_node = true`.
+
+Builds with `realtime.enabled` (`SPEC-10`) keep preallocated message objects and reset them to their defaults instead of declaring locals, so no allocation happens on the callback path.
+
+== 5. Python Target (`rclpy`) Emission Architecture
+
+=== 5.1. File Hierarchy Standards
+Generated Python packages conform to standard ROS 2 `ament_python` structures:
+
+[text]
+----
+<node_name>/
+├── package.xml
+├── setup.py
+├── setup.cfg
+└── <node_name>/
+    ├── __init__.py
+    ├── node.py
+    └── runtime.py         # RunGate, DiagRing, low_pass (SPEC-12)
+----
+
+=== 5.2. Reference Output Template Snippet (Python Node)
+
+[source,python]
+----
+# Generated by nodesmith (SPEC-03). DO NOT EDIT DIRECTLY.
+import math
+from dataclasses import dataclass, replace
+
+import rclpy
+from rcl_interfaces.msg import SetParametersResult
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.node import Node
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import Imu
+from std_msgs.msg import String
+
+from imu_filter_node import runtime as r2d  # low_pass, RunGate, DiagRing (SPEC-12)
+
+
+@dataclass(frozen=True)
+class Params:  # immutable snapshot; replaced by a single assignment (SPEC-12 §5)
+    alpha: float = 0.85
+    max_accel: float = 20.0
+
+
+class ImuFilterNode(Node):
+
+    def __init__(self):
+        super().__init__('imu_filter_node', namespace='/sensors/chassis')
+        self._params = Params()
+        self._state_prev_z = 0.0  # touched only by callback group state_domain_1 (SPEC-12 §3)
+        self._gate = r2d.RunGate()
+        self._diag = r2d.DiagRing(self)
+        self._declare_parameters()
+        self._create_interfaces()
+        self._gate.open()
+
+    def _declare_parameters(self):
+        self.declare_parameter('alpha', 0.85)
+        self.declare_parameter('max_accel', 20.0)
+        self.add_on_set_parameters_callback(self._on_set_parameters)
+
+    def _on_set_parameters(self, updates):
+        # Validate the whole batch, then swap one immutable object: all or nothing.
+        nxt = self._params
+        for p in updates:
+            if p.name == 'alpha':
+                if not 0.0 <= p.value <= 1.0:
+                    return SetParametersResult(successful=False, reason="'alpha' out of range [0.0, 1.0]")
+                nxt = replace(nxt, alpha=float(p.value))
+            elif p.name == 'max_accel':
+                if p.value < 0.0:
+                    return SetParametersResult(successful=False, reason="'max_accel' below minimum 0.0")
+                nxt = replace(nxt, max_accel=float(p.value))
+        self._params = nxt
+        return SetParametersResult(successful=True)
+
+    def _create_interfaces(self):
+        self._group_state_domain_1 = MutuallyExclusiveCallbackGroup()
+        qos = QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=5,
+                         reliability=ReliabilityPolicy.BEST_EFFORT)
+        self._raw_imu_sub = self.create_subscription(
+            Imu, '/sensor/imu/raw', self._filter_imu, qos,
+            callback_group=self._group_state_domain_1)
+        self._filtered_imu_pub = self.create_publisher(Imu, '/sensor/imu/filtered', 10)
+        self._status_pub = self.create_publisher(String, '/sensor/imu/status', 10)
+
+    def _filter_imu(self, msg: Imu):  # pipeline `filter_imu` (SPEC-02 §7)
+        with self._gate.scope() as run:
+            if not run:
+                return
+            params = self._params  # one snapshot for the whole execution
+            z = r2d.low_pass(msg.linear_acceleration.z, self._state_prev_z, params.alpha)
+            over = abs(z) > params.max_accel
+            next_prev_z = z
+            if not math.isfinite(z) or not math.isfinite(next_prev_z):
+                self._diag.report('ERR_RUN_101', 'filter_imu')
+                return
+            self._state_prev_z = next_prev_z  # commit
+            out = Imu()
+            out.header.frame_id = msg.header.frame_id
+            out.linear_acceleration.z = z
+            self._filtered_imu_pub.publish(out)
+            status = String()
+            status.data = 'OVERLIMIT' if over else 'OK'
+            self._status_pub.publish(status)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = ImuFilterNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+----
+
+== 6. Template Engine Integration & Build Pipeline
+
+1. **Jinja2 Architecture:** The toolchain is implemented in Python 3.11+ and renders Jinja2 templates. Target templates are decoupled file groups in `templates/cpp_rclcpp/` and `templates/python_rclpy/`.
+2. **Context Injection:** Synthesizer modules (`src/nodesmith/synthesizer/`) ingest the `SPEC-00` AST models, build a target-specific context dictionary, and execute template expansion.
+3. **Formatting Post-Process Hooks:**
+   * **C++:** Formatted via `clang-format` before writing to disk.
+   * **Python:** Formatted via `ruff format`.

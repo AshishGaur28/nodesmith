@@ -1,0 +1,12 @@
+# "class" is a keyword in both C++ and Python (SPEC-01 §4.2).
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[publishers]]
+id = "class"
+topic = "/out"
+type = "std_msgs/msg/Float64"

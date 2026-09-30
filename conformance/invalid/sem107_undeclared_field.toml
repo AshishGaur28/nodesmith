@@ -1,0 +1,28 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[subscribers]]
+id = "s"
+topic = "/in"
+type = "std_msgs/msg/Float64"
+
+[[publishers]]
+id = "p"
+topic = "/out"
+type = "std_msgs/msg/Float64"
+
+[interfaces."std_msgs/msg/Float64".fields]
+data = "float64"
+
+[[pipelines]]
+name = "a"
+expressions = [
+  "let y = msg.nope"
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "s"

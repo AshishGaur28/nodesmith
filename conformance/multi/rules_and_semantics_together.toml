@@ -1,0 +1,35 @@
+# A cross-block rule, an unsupported-target error and a semantic error are all reported, in gate order.
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "python"
+
+[[subscribers]]
+id = "s"
+topic = "/in"
+type = "std_msgs/msg/Float64"
+zero_copy = true
+
+[[publishers]]
+id = "p"
+topic = "/out"
+type = "std_msgs/msg/Float64"
+
+[interfaces."std_msgs/msg/Float64".fields]
+data = "float64"
+[interfaces."std_msgs/msg/Float64"]
+fixed_size = true
+
+[lifecycle]
+enabled = true
+
+[[pipelines]]
+name = "a"
+expressions = [
+  "let y = param.nope"
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "s"

@@ -1,0 +1,87 @@
+= SPEC-00: System Architecture & Intermediate Representation (IR) Contract
+:status: Frozen
+:version: 1.0.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Purpose
+
+`SPEC-00` fixes the pipeline stages and the IR contract between the user manifest (`SPEC-01`, `SPEC-02`) and the target generators (`SPEC-03`). The IR is the only input generators see, so nothing target-specific may enter it and nothing about a manifest may be lost in it.
+
+The normative IR definition is `schemas/node_ir.schema.json` (`ir_version` `1.0.0`). Extensions (`SPEC-05`–`SPEC-11`) add their configuration under the IR `extensions` object; their schemas are owned by those specs.
+
+[text]
+----
+manifest (TOML/YAML/JSON)
+   │ 1 Ingestion            parse; reject null/duplicate keys/unsupported tags   (ERR_SYN_*)
+   │ 2 Schema check         node_manifest.schema.json                            (ERR_SYN_002)
+   │ 3 Lowering             resolve references (SPEC-01 §6), fill defaults,      (ERR_SEM_10x)
+   │                        parse expressions, build IR (SPEC-02)
+   │ 4 Semantic pass        types, name binding, acyclicity, interface           (ERR_SEM_*)
+   │                        resolution (SPEC-01 §7), extension checks
+   │ 5 Synthesis            IR + target + generator version -> file set in memory (ERR_SEM/SYN)
+   │ 6 Emission             write file set                                        (I/O errors)
+   ▼
+generated package
+----
+
+Stages 1–4 form `nodesmith validate` / `lower`; 5–6 are `generate`.
+
+== 2. Stage Rules
+
+1. A failure at Stages 1–5 halts with diagnostics (`SPEC-04` §4) and touches nothing on disk.
+2. Stage 6 writes to a temporary directory beside the destination and renames it into place only when every file was written; `--clean` deletes the old destination only after that succeeds. A Stage 6 failure leaves the previous destination intact.
+3. Message field checks use only the `[interfaces]` declarations of the manifest (`SPEC-01` §7); no ROS installation or interface files are read.
+
+== 3. IR Model (summary of `node_ir.schema.json`)
+
+[cols="1m,3", options="header"]
+|===
+| IR field | Content
+| `node_meta` | `name`, `namespace`, `version` (default filled), optional `description`. No target language.
+| `interfaces.publishers/subscribers` | `identifier`, `topic`, `type_symbol` (`pkg/msg/Name`), `zero_copy`, fully resolved `qos` (all four fields present).
+| `interfaces.services` | `identifier`, `service_name`, `type_symbol` (`pkg/srv/Name`).
+| `interface_types` | The declared message/service types, sorted by `type_symbol`: `kind` (`msg`/`srv`), `fixed_size` and `fields` for messages, `request` and `response` for services (field path → ROS primitive type). Generators need them to emit correct field access and conversions.
+| `parameters` | `name`, `canonical_type`, `default_value` (coerced to type), `read_only`, `description`, `validation`.
+| `parameter_constraints` | Each `parameter_constraints` expression lowered to an AST (`root_node_id` + `nodes`).
+| `state_buffers` | `name`, `canonical_type`, `initial_value`.
+| `execution_dags` | One per pipeline: `id`, `trigger` (`kind`, `source_id`, `period_ms`, `clock`), `callback_group`, `nodes`, `state_writes`, `assignments`.
+| `concurrency` | Effective `executor`, `threads`, and `callback_groups` (`name`, `type`, `explicit`) as assigned by `SPEC-12` §3 during lowering.
+| `extensions` | Canonicalized extension blocks keyed by block name.
+|===
+
+=== 3.1. Expression DAG
+
+`nodes` is in topological order (a node references only earlier nodes). Node `op`:
+
+[cols="1m,3", options="header"]
+|===
+| op | operands / attrs
+| `const` | attrs `value`
+| `param`, `state` | attrs `name` (`state` = value committed before the execution)
+| `input` | attrs `root` (`msg`\|`req`), `path` (dotted field path)
+| `index` | operands `[array, index]`
+| `unary`, `binary` | attrs `operator`; operands 1 or 2 node ids
+| `select` | operands `[cond, if_true, if_false]` (lowered `?:`, lazily evaluated)
+| `call` | attrs `function`; operands = arguments
+|===
+
+Every node carries its resolved `type_symbol` (a canonical type, `SPEC-02` §2), with any implicit widening made explicit as a `call` to the matching `to_*` function. `let` locals disappear: a local is the single node its expression created, referenced by every later use (`label` records the name of the first `let` that names a node; it is part of the IR and of the IR hash, and generators may use it for readable names).
+
+*Node creation order (normative, so that ids and the IR hash are reproducible):* nodes are created in the order the expressions are evaluated — statements in listed order, then `output_mapping` values in ascending target-path order — by a post-order walk: operands left to right, then any implicit-widening `to_*` call for the left operand and then for the right operand, then the operator, call, `select` or `index` node itself. Nothing is deduplicated: two textually identical sub-expressions create two nodes, and only a `let` local is shared. Ids are `n0`, `n1`, … per execution graph in creation order. `state_writes` (staged, atomic commit) and `assignments` (`<publisher id>.<path>` or `res.<path>` ← node) implement `SPEC-02` §7.
+
+== 4. Errors and Diagnostics
+
+The error-code registry, exit codes and diagnostic payload format are defined once, in `SPEC-04` §4. This spec reuses them: Stage 1 → `ERR_SYN_001`; Stage 2 → `ERR_SYN_002`; Stages 3–4 → `ERR_SEM_*` and the feature categories (`SHM`, `RT`, `SIM`, `SEC`, `PRF`).
+
+== 5. Canonical Form & Determinism
+
+1. *Canonical IR serialization:* UTF-8 JSON; object keys sorted lexicographically; no insignificant whitespace; integers in plain decimal; floats in shortest round-trip decimal; arrays in canonical order below. `SHA-256` of these bytes is the *IR hash*.
+2. *Canonical order:* `publishers`, `subscribers`, `services`, `parameters`, `state_buffers`, `execution_dags` sorted by identifier/name; `nodes` in creation order (§3.1), which is also topological; `assignments` sorted by target path; `state_writes` by state name.
+3. *Defaults resolved:* the IR contains no optional-with-default fields. Manifests that differ only in defaults being spelled out lower to the same IR. Defaults come from the schema's `default` keywords: a present object is filled with its missing defaulted members; an *absent* optional object is materialized (with its defaults) if it has at least one defaulted member, so `[security.encryption]` omitted and `[security.encryption] allow_unencrypted_metadata = false` are equivalent. A top-level extension block is never materialized: its presence is what enables the feature.
+4. *Language neutrality:* the IR contains no C++/Python keywords, types or syntax, and neither `target_language` nor `rmw`. The generator input is the triple (IR, target, generator version).
+5. *Determinism:* equal (IR hash, target, generator version, extension config) MUST yield byte-identical generated files on every OS. Formatter versions used by post-processing are part of the generator version and must be pinned by the toolchain.
+6. *Side-effect-free failure:* §2.
+7. *Versioning:* `ir_version` is SemVer. A MAJOR change requires a documented migration. `schemas/flatbuffers/ir_ast.fbs` is reserved for a future binary encoding and is not normative; JSON is the only defined IR encoding.

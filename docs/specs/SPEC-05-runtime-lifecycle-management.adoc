@@ -1,0 +1,270 @@
+= SPEC-05: Runtime Lifecycle Management & State Machine Specification
+:status: Draft
+:version: 0.1.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Executive Summary & Scope
+
+`SPEC-05` specifies the architecture, operational semantics, transition hooks, fault recovery mechanics, and target language generation rules for managed **Lifecycle Nodes** (`rclcpp_lifecycle` and `rclpy.lifecycle`) synthesized by the Nodesmith.
+
+While `SPEC-01` through `SPEC-04` govern static node structural manifests, dynamic expression AST lowering, multi-language synthesis, and CLI toolchains, `SPEC-05` defines the dynamic runtime state machine. The primary objective is to bring deterministic, predictable operational safety and lifecycle managed orchestration (`REP-2007`) to running nodes in mission-critical environments.
+
+[text]
+----
+                      ┌──────────────────────────────────────┐
+                      │             Unconfigured             │
+                      └──────────────────┬───────────────────┘
+                                         │
+                               Configure │ CleanUp
+                                         ▼
+                      ┌──────────────────────────────────────┐
+                      │               Inactive               │
+                      └──────────────────┬───────────────────┘
+                                         │
+                                Activate │ Deactivate
+                                         ▼
+                      ┌──────────────────────────────────────┐
+                      │                Active                │
+                      └──────────────────┬───────────────────┘
+                                         │
+                                Shutdown │ Error
+                                         ▼
+                      ┌──────────────────────────────────────┐
+                      │              Finalized               │
+                      └──────────────────────────────────────┘
+----
+
+== 2. Standard State Definitions
+
+Managed nodes emitted under `SPEC-05` strictly implement the standard ROS 2 Managed Node state machine (`REP-2007`).
+
+=== 2.1. Primary States
+
+[cols="1m,2,3", options="header"]
+|===
+| State | Description | Permissible Node Operations
+
+| `Unconfigured`
+| Initial state immediately following instantiation.
+| Node exists; dynamic memory, subscriptions, and ROS publishers are NOT allocated or bound.
+
+| `Inactive`
+| Configured state; resources fully pre-allocated.
+| Publishers created in disabled state; subscriptions connected, but the run gate is closed so incoming payloads are dropped without processing (`SPEC-12` §6).
+
+| `Active`
+| Primary operational state; pipeline execution active.
+| Publishers emitting messages; subscriptions executing AST logic; timers firing callbacks.
+
+| `Finalized`
+| Terminal state prior to destruction.
+| All resources released; node ready for safe deallocation.
+|===
+
+=== 2.2. Transition States
+
+* `Configuring`: Initialises state variables and pre-allocates resources (`SPEC-12`); parameters were declared in the constructor.
+* `CleaningUp`: Executes memory freeing, handle closures, state variable buffer resets, and middleware destructions.
+* `Activating`: Enables publisher outputs, binds callback pipelines, and starts execution timers.
+* `Deactivating`: Disables publisher outputs, pauses pipeline execution timers, and freezes state buffers.
+* `ShuttingDown`: Executes graceful teardown and releases middleware bindings.
+* `ErrorProcessing`: Entered only when a transition callback returns `ERROR` or throws (§6). Pipeline faults do not enter it.
+
+== 3. Lifecycle Configuration Manifest Extensions (`SPEC-01`)
+
+Lifecycle management is enabled by a `[lifecycle]` block (`enabled` defaults to `true`; schema: `$defs/LifecycleExtension`). There is no `node.enable_lifecycle` key. `auto_configure` makes the generated `main()` request the configure transition once the executor is spinning; `auto_activate` (which requires `auto_configure`, enforced by the schema) then requests activation. When they are not both set, something outside the node (an operator or a lifecycle manager) must drive the remaining transitions; the framework does not.
+
+[source,toml]
+----
+[node]
+name = "imu_filter_lifecycle_node"
+namespace = "/sensors/chassis"
+target_language = "cpp"
+
+[lifecycle]
+auto_configure = false
+auto_activate = false
+on_error_strategy = "TransitionToInactive" # Options: TransitionToInactive, Shutdown, Reset
+
+[lifecycle.transitions]
+on_configure_timeout_sec = 2.0
+on_activate_timeout_sec = 0.5
+on_deactivate_timeout_sec = 0.5
+on_cleanup_timeout_sec = 1.0
+----
+
+`on_error_strategy` defaults to `TransitionToInactive`. Timeouts are positive seconds. A timeout is a watchdog: a transition callback that has not returned within it is reported as `ERR_LCY_102` and counted in diagnostics, but it is not preempted.
+
+== 4. Standard Transition Hooks & Code Generation Mapping
+
+Each synthesized node target emits standard lifecycle transition handlers (`SPEC-03`) mapping directly to underlying language bindings and returning canonical transition results (`CallbackReturn`).
+
+=== 4.1. Lifecycle Transition Mapping Matrix
+
+[cols="1m,2m,2m", options="header"]
+|===
+| Lifecycle Event | C++ (`rclcpp_lifecycle`) | Python (`rclpy.lifecycle`)
+
+| `on_configure`
+| `CallbackReturn on_configure(const State&)`
+| `on_configure(self, state)`
+
+| `on_activate`
+| `CallbackReturn on_activate(const State&)`
+| `on_activate(self, state)`
+
+| `on_deactivate`
+| `CallbackReturn on_deactivate(const State&)`
+| `on_deactivate(self, state)`
+
+| `on_cleanup`
+| `CallbackReturn on_cleanup(const State&)`
+| `on_cleanup(self, state)`
+
+| `on_shutdown`
+| `CallbackReturn on_shutdown(const State&)`
+| `on_shutdown(self, state)`
+
+| `on_error`
+| `CallbackReturn on_error(const State&)`
+| `on_error(self, state)`
+|===
+
+Only the C++ binding has a reference snippet (§5). The Python (`rclpy`) column is unverified: its lifecycle API must be confirmed on the pinned distribution (Jazzy) before the generator targets it.
+
+=== 4.2. Return Value Semantics (`CallbackReturn`)
+
+* `SUCCESS`: Transition completed without error. State machine advances to target primary state.
+* `FAILURE`: Transition failed, but node remains in a recoverable state. State machine falls back to previous state.
+* `ERROR`: Unhandled exception or catastrophic failure during transition. State machine forces transition to `ErrorProcessing`.
+
+=== 4.3. Synthesized Handler Execution Sequence
+
+==== Transition: `Unconfigured` -> `Inactive` via `on_configure`
+1. **State Initialisation:** Set every `[state_variables]` entry to its `initial_value`. Parameters were already declared and validated in the constructor (a lifecycle node declares parameters once; `SPEC-07`).
+2. **Buffer Allocation:** Allocate zero-copy pools (`SPEC-06`), preallocated messages, diagnostics ring, and callback groups (`SPEC-12`).
+3. **Dormant Middleware Setup:** Construct subscriber and lifecycle publisher instances in dormant/disabled state.
+4. **Gate stays closed:** no pipeline executes until `on_activate` opens the run gate (`SPEC-12` §6).
+
+==== Transition: `Inactive` -> `Active` via `on_activate`
+1. **Activate Middleware:** Invoke `on_activate()` on all lifecycle publisher handles (`rclcpp_lifecycle::LifecyclePublisher`).
+2. **Unpause Execution:** Enable pipeline execution timers and bind active subscription callback dispatchers; concretely, open the run gate and schedule `startup` pipelines (`SPEC-12` §6).
+
+==== Transition: `Active` -> `Inactive` via `on_deactivate`
+1. **Pause Execution:** Close the run gate and wait for in-flight executions to finish, within `on_deactivate_timeout_sec` (`SPEC-12` §6); freeze active timers.
+2. **Deactivate Middleware:** Invoke `on_deactivate()` on lifecycle publishers to drop outgoing transmissions cleanly.
+
+==== Transition: `Inactive` -> `Unconfigured` via `on_cleanup`
+1. **Teardown Middleware:** Destroy subscribers, timers, and lifecycle publishers.
+2. **Deallocate Buffers:** Free ring buffers and release memory handles.
+
+== 5. Reference Code Generation Output Snippet (C++)
+
+Synthesized C++ implementation generated for a lifecycle node conforming to `SPEC-05` and `SPEC-03`:
+
+[source,cpp]
+----
+// Generated by nodesmith (SPEC-05 / SPEC-03 / SPEC-12). DO NOT EDIT DIRECTLY.
+#include <chrono>
+#include <memory>
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <rclcpp_lifecycle/lifecycle_publisher.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include "imu_filter_node/runtime.hpp"
+
+namespace sensors::chassis {
+
+class ImuFilterLifecycleNode : public rclcpp_lifecycle::LifecycleNode {
+public:
+  using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
+
+  explicit ImuFilterLifecycleNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : rclcpp_lifecycle::LifecycleNode("imu_filter_lifecycle_node", "/sensors/chassis", options),
+    params_(Params{}) {
+    declare_parameters();  // once, here: declaring again in on_configure would throw on the 2nd configure
+  }
+
+  CallbackReturn on_configure(const rclcpp_lifecycle::State &) override {
+    state_ = State{};  // state_variables initial values (SPEC-01 §4.4)
+    group_state_domain_1_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions sub_opts;
+    sub_opts.callback_group = group_state_domain_1_;
+    raw_imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
+      "/sensor/imu/raw", rclcpp::QoS(10),
+      [this](sensor_msgs::msg::Imu::ConstSharedPtr m) { filter_imu(*m); }, sub_opts);
+    pub_ = create_publisher<sensor_msgs::msg::Imu>("/sensor/imu/filtered", rclcpp::QoS(10));  // dormant
+    return CallbackReturn::SUCCESS;
+  }
+
+  CallbackReturn on_activate(const rclcpp_lifecycle::State & previous) override {
+    LifecycleNode::on_activate(previous);  // enables the lifecycle publishers
+    gate_.open();                          // pipelines may now start (SPEC-12 §6)
+    return CallbackReturn::SUCCESS;
+  }
+
+  CallbackReturn on_deactivate(const rclcpp_lifecycle::State & previous) override {
+    if (!gate_.close_and_drain(std::chrono::milliseconds(500))) {  // on_deactivate_timeout_sec
+      diag_.report(r2d::Code::ERR_LCY_102, "on_deactivate");
+      return CallbackReturn::FAILURE;  // stays Active
+    }
+    LifecycleNode::on_deactivate(previous);
+    return CallbackReturn::SUCCESS;
+  }
+
+  CallbackReturn on_cleanup(const rclcpp_lifecycle::State &) override {
+    raw_imu_sub_.reset();
+    pub_.reset();
+    group_state_domain_1_.reset();
+    return CallbackReturn::SUCCESS;
+  }
+
+  CallbackReturn on_shutdown(const rclcpp_lifecycle::State &) override {
+    return CallbackReturn::SUCCESS;
+  }
+
+  // Invoked only when a transition callback returned ERROR or threw (REP-2007).
+  // SUCCESS lands in Unconfigured, FAILURE in Finalized; strategy Shutdown returns FAILURE.
+  CallbackReturn on_error(const rclcpp_lifecycle::State &) override {
+    diag_.report(r2d::Code::ERR_LCY_101, "transition failed");
+    return CallbackReturn::SUCCESS;
+  }
+
+private:
+  // Called by a pipeline wrapper AFTER it has left the run gate (SPEC-12 §6) when the manifest's
+  // on_error_strategy requires leaving Active. Never call this from inside an execution.
+  void escalate_pipeline_fault() {
+    diag_.report(r2d::Code::ERR_LCY_101, "pipeline fault");
+    deactivate();  // TransitionToInactive; Reset adds cleanup(); Shutdown calls shutdown() instead
+  }
+
+  void declare_parameters();
+  void filter_imu(const sensor_msgs::msg::Imu & msg);
+
+  r2d::SnapshotRing<Params, 3> params_;
+  State state_;
+  r2d::RunGate gate_;
+  r2d::DiagRing diag_;
+  rclcpp::CallbackGroup::SharedPtr group_state_domain_1_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr raw_imu_sub_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::Imu>> pub_;
+};
+
+}  // namespace sensors::chassis
+----
+
+*Unverified against a ROS distribution (check before templating):* that callback groups created in `on_configure` are picked up by an already-spinning executor; the `LifecycleNode::on_activate/on_deactivate` base-class calls; `deactivate()`/`cleanup()`/`shutdown()` as synchronous programmatic transitions; and the REP-2007 `on_error` return mapping (`SUCCESS` → `Unconfigured`, `FAILURE` → `Finalized`).
+
+== 6. Fault Handling & Error State Recovery Mechanics
+
+Two different things can go wrong; they take different paths because REP-2007 only reaches `ErrorProcessing` from a failed *transition*.
+
+1. *Pipeline fault* (a numeric fault, `ERR_RUN_101`, `SPEC-02` §6). Pipelines never throw, so nothing enters `on_error`. Once the faulting execution has left the run gate, the generated code applies `on_error_strategy` by triggering ordinary transitions from node code, and reports `ERR_LCY_101` on `/diagnostics` (`SPEC-04` §4.5):
+   * `TransitionToInactive` (default): `deactivate()` — publishers disabled, timers paused, still configured, re-activation possible.
+   * `Reset`: `deactivate()` then `cleanup()` — back to `Unconfigured`.
+   * `Shutdown`: `shutdown()` — `Finalized`, for restart by an orchestrator.
+2. *Transition failure* (a transition callback returns `ERROR` or throws). REP-2007 moves to `ErrorProcessing` and calls `on_error`: returning `SUCCESS` lands in `Unconfigured`, `FAILURE` in `Finalized`. REP-2007 offers no path to `Inactive` from here, so generated `on_error` returns `SUCCESS` for `TransitionToInactive` and `Reset` and `FAILURE` for `Shutdown`. `ERR_LCY_101` is reported.
+3. A transition callback that exceeds its `[lifecycle.transitions]` watchdog is reported as `ERR_LCY_102` and is not preempted.
+4. A pipeline fault escalation never runs from inside an execution (`SPEC-12` §6), because `on_deactivate` waits for in-flight executions.

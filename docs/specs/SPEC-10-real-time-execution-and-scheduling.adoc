@@ -1,0 +1,249 @@
+= SPEC-10: Real-Time Execution & Scheduling Specification
+:status: Draft
+:version: 0.1.0
+:owner: Core Framework Architecture Team
+:toc: left
+:toclevels: 3
+:source-highlighter: highlight.js
+
+== 1. Executive Summary & Scope
+
+`SPEC-10` specifies the real-time execution architecture, POSIX thread scheduling policies, memory locking semantics, CPU affinity pinning, executor callback group isolates, and deadline monitoring mechanics synthesized by the Nodesmith.
+
+To ensure strict time-deterministic execution, eliminate unbounded priority inversions, avoid page faults, and meet hard deadline guarantees in safety-critical autonomous systems, `SPEC-10` standardizes real-time configuration parameters in node manifests (`SPEC-01`) and specifies how code generation targets (`SPEC-03`) instantiate deterministic real-time runtimes (`rclcpp::executors::EventsExecutor`, `rclcpp::executors::StaticSingleThreadedExecutor`, real-time Callback Groups, and POSIX `pthread` configurations).
+
+[text]
+----
+┌────────────────────────────────────────────────────────────────────────┐
+│                     Real-Time Thread Context Init                      │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ 1. Lock Process Address Space (`mlockall(MCL_CURRENT | MCL_FUTURE)`)│ │
+│ │ 2. Set POSIX Policy & Priority (`SCHED_FIFO`, priority = 80)       │ │
+│ │ 3. Pin Thread to Dedicated Isolated CPU Cores (`sched_setaffinity`)│ │
+│ │ 4. Pre-fault Thread Stack Memory & Allocate Fixed Heap Pools       │ │
+│ └──────────────────────────────────┬─────────────────────────────────┘ │
+└────────────────────────────────────┼───────────────────────────────────┘
+                                     │ Real-Time Thread Ready
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                   Callback Group Real-Time Dispatcher                  │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ MutuallyExclusive Callback Group (High-Priority Control Loop)      │ │
+│ │  ├── Monotonic Clock Timer (SPEC-09)                               │ │
+│ │  ├── In-Place AST Expression Logic Execution (SPEC-02)             │ │
+│ │  └── Deadline Auditor (Budget vs Actual Execution Time)            │ │
+│ └────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────┘
+----
+
+== 2. Manifest Real-Time Extensions (`SPEC-01`)
+
+Nodes declare real-time constraints, thread scheduling attributes, memory pre-allocation rules and callback groups in the optional `[realtime]` block (schema: `$defs/RealtimeExtension`):
+
+[source,toml]
+----
+[node]
+name = "flight_controller_node"
+namespace = "/control/avionics"
+target_language = "cpp"
+
+[[subscribers]]
+id = "imu_sub"
+topic = "/sensors/imu"
+type = "sensor_msgs/msg/Imu"
+
+[interfaces."sensor_msgs/msg/Imu".fields]
+"linear_acceleration.x" = "float64"
+
+[[pipelines]]
+name = "control_loop"
+callback_group = "control_loop_group"   # joins the group declared below
+expressions = ["let cmd = clamp(msg.linear_acceleration.x * 0.1, -1.0, 1.0)"]
+[pipelines.trigger]
+type = "subscriber"
+source = "imu_sub"
+
+[realtime]
+enabled = true
+policy = "SCHED_FIFO"      # SCHED_FIFO | SCHED_RR | SCHED_DEADLINE | SCHED_OTHER
+priority = 80              # 1..99; required for FIFO/RR, forbidden otherwise
+cpu_affinity = [2, 3]      # unique logical cores
+memory_lock = true         # mlockall(MCL_CURRENT | MCL_FUTURE)
+stack_size_bytes = 1048576 # pre-faulted per executor thread
+
+[realtime.executor]
+type = "MultiThreadedExecutor" # EventsExecutor | StaticSingleThreadedExecutor | SingleThreadedExecutor | MultiThreadedExecutor
+
+[concurrency]
+threads = 2                    # worker threads (SPEC-12); >1 requires MultiThreadedExecutor
+
+[[realtime.callback_groups]]
+name = "control_loop_group"
+type = "MutuallyExclusive" # MutuallyExclusive | Reentrant
+deadline_us = 1000         # hard deadline: 1 ms
+on_deadline_miss = "raise_diagnostic" # raise_diagnostic | log_warning | error_transition
+----
+
+For `policy = "SCHED_DEADLINE"` the block takes `deadline_params = { runtime_us, deadline_us, period_us }` instead of `priority`; `SCHED_OTHER` takes neither. A pipeline joins a group with its `callback_group` key; pipelines without one get an automatic group derived from the state they touch, and pipelines that share state are always placed together (`SPEC-12` §3, which also defines when `Reentrant` is allowed). Group names are unique, and `error_transition` requires an enabled `[lifecycle]` block (`SPEC-01` §5.1 rule 2; violations are `ERR_RT_002`). Per-group thread priorities and a manifest-selectable clock domain are not offered because stock ROS 2 executors cannot honour them: all real-time work uses `CLOCK_MONOTONIC`, and simulation (`SPEC-11`) requires `clock = "ros"` timers instead.
+
+=== 2.1. Parameter Invariants
+
+* `enabled` (`bool`): Directs synthesized startup code to invoke POSIX real-time initialization.
+* `policy` (`enum`): Specifies POSIX scheduling policy (`SCHED_FIFO`, `SCHED_RR`, `SCHED_DEADLINE`, `SCHED_OTHER`).
+* `priority` (`uint32`): Real-time thread priority (1 to 99; higher values indicate elevated scheduling preference).
+* `cpu_affinity` (`array[uint32]`): Array of isolated CPU cores assigned to the thread via `sched_setaffinity`.
+* `memory_lock` (`bool`): When `true`, locks all current and future process memory pages into RAM using `mlockall(MCL_CURRENT | MCL_FUTURE)`.
+
+== 3. Memory Locking, CPU Affinity & Deadline Mechanics
+
+To eliminate non-deterministic execution spikes caused by OS kernel page faults, CPU context swaps, or thread contention, real-time pipelines MUST adhere to four operational rules.
+
+=== 3.1. Real-Time Operational Invariants
+
+1. **Page Fault Prevention Invariant:** When `memory_lock = true`, `mlockall` MUST be invoked prior to initializing middleware handles or allocating message buffers. Thread stack memory MUST be pre-faulted by writing to stack pages during node initialization.
+2. **Zero Dynamic Allocation in Callback Paths:** Real-time callback execution paths MUST NOT invoke dynamic heap allocations (`malloc`, `new`, or standard dynamic vector resizes). All buffers MUST be pre-allocated during initialisation (the constructor, or `on_configure` for lifecycle nodes, `SPEC-05`) or managed via static memory pools (`SPEC-06`).
+3. **Priority Inversion Avoidance:** All synchronization primitives (mutexes, locks) shared between real-time threads and lower-priority non-real-time worker threads MUST utilize priority inheritance protocol (`PTHREAD_PRIO_INHERIT`).
+4. **Deadline Violation Handling:** `deadline_us` of a callback group applies to every execution of every pipeline in that group, measured from callback entry to exit. If an execution exceeds it, the deadline manager MUST record the missed deadline, increment the deadline-miss counter (`SPEC-12` §7), execute the `on_deadline_miss` action, and emit runtime diagnostic `ERR_RT_105`.
+
+== 4. Target Code Generation Patterns (`SPEC-03`)
+
+The framework synthesizer emits POSIX real-time configuration routines and deterministic executor initializers for target language runtimes conforming to `SPEC-03`.
+
+=== 4.1. C++ (`rclcpp`) Synthesized Real-Time Startup and Node
+
+[source,cpp]
+----
+// Generated by nodesmith (SPEC-10 / SPEC-12). DO NOT EDIT DIRECTLY. Linux only.
+#include <alloca.h>
+#include <pthread.h>
+#include <sched.h>
+#include <sys/mman.h>
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <memory>
+#include <vector>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/executors/multi_threaded_executor.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include "flight_controller_node/runtime.hpp"  // RunGate, DiagRing, DeadlineScope (SPEC-12)
+
+namespace control::avionics {
+
+struct RealtimeConfig {  // constants from the IR `realtime` extension block
+  int policy;            // SCHED_FIFO or SCHED_RR here; SCHED_DEADLINE uses sched_setattr (see text)
+  int priority;          // 1..99
+  std::vector<int> cpu_affinity;
+  bool memory_lock;
+  size_t stack_size_bytes;  // must stay below RLIMIT_STACK
+};
+
+// Touch every page of the calling thread's stack once so it is resident before real-time work.
+__attribute__((noinline)) static void prefault_stack(size_t bytes) {
+  volatile char * p = static_cast<volatile char *>(alloca(bytes));
+  for (size_t i = 0; i < bytes; i += 4096) p[i] = 0;
+}
+
+// Startup only, from main() and BEFORE rclcpp::init, so no middleware handle exists yet
+// (SPEC-10 §3.1 rule 1). Worker threads created later inherit policy and affinity, and with
+// MCL_FUTURE their stacks are populated when mapped. Returns false after printing the code.
+bool configure_realtime_environment(const RealtimeConfig & cfg) {
+  if (cfg.memory_lock && mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+    std::fprintf(stderr, "ERR_RT_101: mlockall failed: %s\n", std::strerror(errno));
+    return false;
+  }
+  prefault_stack(cfg.stack_size_bytes);
+
+  if (!cfg.cpu_affinity.empty()) {
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    for (int core : cfg.cpu_affinity) CPU_SET(core, &set);
+    if (int rc = pthread_setaffinity_np(pthread_self(), sizeof(set), &set)) {
+      std::fprintf(stderr, "ERR_RT_102: pthread_setaffinity_np failed: %s\n", std::strerror(rc));
+      return false;
+    }
+  }
+  if (cfg.policy != SCHED_OTHER) {
+    sched_param param{};
+    param.sched_priority = cfg.priority;
+    if (int rc = pthread_setschedparam(pthread_self(), cfg.policy, &param)) {
+      std::fprintf(stderr, "ERR_RT_103: pthread_setschedparam failed: %s\n", std::strerror(rc));
+      return false;
+    }
+  }
+  return true;
+}
+
+class FlightControllerNode : public rclcpp::Node {
+public:
+  explicit FlightControllerNode(const rclcpp::NodeOptions & options)
+  : Node("flight_controller_node", "/control/avionics", options) {
+    // Group from the IR; added to the executor together with the node (SPEC-12 §8).
+    control_loop_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions sub_opts;
+    sub_opts.callback_group = control_loop_group_;
+    imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
+      "/sensors/imu", rclcpp::QoS(10),
+      [this](sensor_msgs::msg::Imu::ConstSharedPtr m) { control_loop(*m); }, sub_opts);
+    gate_.open();
+  }
+
+private:
+  void control_loop(const sensor_msgs::msg::Imu & msg) {
+    r2d::RunGate::Scope run(gate_);
+    if (!run) return;
+    // Steady-clock read at entry; on exit it counts the miss and reports ERR_RT_105 through the
+    // preallocated diagnostics ring, then applies on_deadline_miss. No allocation, no logging.
+    r2d::DeadlineScope deadline(diag_, /*deadline_us=*/1000, r2d::DeadlineAction::RaiseDiagnostic);
+    // SPEC-02 §7 steps 1-5 on preallocated messages ...
+    (void)msg;
+  }
+
+  r2d::RunGate gate_;
+  r2d::DiagRing diag_;
+  rclcpp::CallbackGroup::SharedPtr control_loop_group_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+};
+
+}  // namespace control::avionics
+
+int main(int argc, char ** argv) {
+  const control::avionics::RealtimeConfig cfg{SCHED_FIFO, 80, {2, 3}, true, 1048576};
+  if (!control::avionics::configure_realtime_environment(cfg)) return 1;  // before any middleware handle
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<control::avionics::FlightControllerNode>(rclcpp::NodeOptions{});
+  rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), /*threads=*/2);  // concurrency.threads
+  executor.add_node(node);
+  executor.spin();
+  rclcpp::shutdown();
+  return 0;
+}
+----
+
+The startup function honours `policy`. `SCHED_DEADLINE` has no libc wrapper: the generator emits a `syscall(SYS_sched_setattr, 0, &attr, 0)` call with the `sched_attr` fields from `deadline_params` instead of `pthread_setschedparam`. `SCHED_OTHER` skips scheduling changes. Startup failures print the registry code and exit non-zero; nothing throws across the middleware boundary.
+
+*Unverified against a ROS distribution (check before templating):* that executor worker threads inherit policy and affinity from the spinning thread, that `mlockall(MCL_FUTURE)` populates new thread stacks when they are mapped, and the Linux `sched_setattr` structure layout. The startup code is Linux-only and has not been compiled here.
+
+=== 4.2. Language Support Matrix for Real-Time Execution
+
+[cols="1m,2m,2m,3", options="header"]
+|===
+| Target Language | Scheduling API Binding | Memory Locking Engine | Real-Time Executor Target
+
+| C++
+| POSIX `pthread` / `sched.h`
+| `mlockall` / `mallopt` tuning
+| Any `realtime.executor.type` (`EventsExecutor`, `StaticSingleThreadedExecutor`, `SingleThreadedExecutor`, `MultiThreadedExecutor`).
+
+| Python
+| `os.sched_setaffinity` / `ctypes` POSIX call
+| Limited (`ctypes` `mlockall`)
+| Python GIL prevents hard real-time; soft real-time affinity support only.
+|===
+
+== 5. Telemetry, Diagnostics & Audit Rules (`SPEC-04` / `SPEC-09`)
+
+Static checks and runtime audit mechanics enforced for real-time nodes:
+
+1. **Missing privileges:** real-time scheduling and memory locking need OS privileges (an RT-priority limit, an unlimited memlock limit, `CAP_SYS_NICE` for `SCHED_DEADLINE`). Granting them is up to whoever runs the node; the generated startup reports `ERR_RT_101`, `ERR_RT_102` or `ERR_RT_103` and exits when they are missing.
+2. **Page Fault Monitoring Telemetry (`SPEC-09`):** Runtime diagnostics track major and minor OS page fault counters (`getrusage`) during real-time loop execution and emit warning diagnostics (`SPEC-04`) under code `ERR_RT_104` if page fault counts increase post-initialization.

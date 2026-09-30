@@ -1,0 +1,230 @@
+{
+  "concurrency": {
+    "callback_groups": [
+      {
+        "explicit": false,
+        "name": "state_domain_1",
+        "type": "MutuallyExclusive"
+      }
+    ],
+    "executor": "SingleThreadedExecutor",
+    "threads": 1
+  },
+  "execution_dags": [
+    {
+      "assignments": [],
+      "callback_group": "state_domain_1",
+      "id": "boot",
+      "nodes": [
+        {
+          "attrs": {
+            "function": "now_sec"
+          },
+          "id": "n0",
+          "op": "call",
+          "operands": [],
+          "type_symbol": "float64"
+        }
+      ],
+      "state_writes": [
+        {
+          "source_node_id": "n0",
+          "state_name": "last_seen"
+        }
+      ],
+      "trigger": {
+        "kind": "startup"
+      }
+    },
+    {
+      "assignments": [
+        {
+          "source_node_id": "n2",
+          "target_field_path": "age_pub.data"
+        },
+        {
+          "source_node_id": "n4",
+          "target_field_path": "alive_pub.data"
+        }
+      ],
+      "callback_group": "state_domain_1",
+      "id": "check_link",
+      "nodes": [
+        {
+          "attrs": {
+            "function": "now_sec"
+          },
+          "id": "n0",
+          "op": "call",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "name": "last_seen"
+          },
+          "id": "n1",
+          "op": "state",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "operator": "-"
+          },
+          "id": "n2",
+          "label": "age",
+          "op": "binary",
+          "operands": [
+            "n0",
+            "n1"
+          ],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "name": "timeout_s"
+          },
+          "id": "n3",
+          "op": "param",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "operator": "<="
+          },
+          "id": "n4",
+          "label": "alive",
+          "op": "binary",
+          "operands": [
+            "n2",
+            "n3"
+          ],
+          "type_symbol": "bool"
+        }
+      ],
+      "state_writes": [],
+      "trigger": {
+        "clock": "steady",
+        "kind": "timer",
+        "period_ms": 200
+      }
+    },
+    {
+      "assignments": [],
+      "callback_group": "state_domain_1",
+      "id": "on_heartbeat",
+      "nodes": [
+        {
+          "attrs": {
+            "function": "now_sec"
+          },
+          "id": "n0",
+          "op": "call",
+          "operands": [],
+          "type_symbol": "float64"
+        }
+      ],
+      "state_writes": [
+        {
+          "source_node_id": "n0",
+          "state_name": "last_seen"
+        }
+      ],
+      "trigger": {
+        "kind": "subscriber",
+        "source_id": "heartbeat_sub"
+      }
+    }
+  ],
+  "extensions": {},
+  "interface_types": [
+    {
+      "fields": {
+        "data": "bool"
+      },
+      "fixed_size": false,
+      "kind": "msg",
+      "type_symbol": "std_msgs/msg/Bool"
+    },
+    {
+      "fields": {
+        "data": "float64"
+      },
+      "fixed_size": false,
+      "kind": "msg",
+      "type_symbol": "std_msgs/msg/Float64"
+    }
+  ],
+  "interfaces": {
+    "publishers": [
+      {
+        "identifier": "age_pub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/monitoring/heartbeat_age",
+        "type_symbol": "std_msgs/msg/Float64",
+        "zero_copy": false
+      },
+      {
+        "identifier": "alive_pub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/monitoring/link_alive",
+        "type_symbol": "std_msgs/msg/Bool",
+        "zero_copy": false
+      }
+    ],
+    "services": [],
+    "subscribers": [
+      {
+        "identifier": "heartbeat_sub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/monitoring/heartbeat",
+        "type_symbol": "std_msgs/msg/Empty",
+        "zero_copy": false
+      }
+    ]
+  },
+  "ir_version": "1.0.0",
+  "node_meta": {
+    "description": "Reports whether heartbeats keep arriving within a timeout.",
+    "name": "link_watchdog_node",
+    "namespace": "/monitoring",
+    "version": "1.0.0"
+  },
+  "parameter_constraints": [],
+  "parameters": [
+    {
+      "canonical_type": "float64",
+      "default_value": 2.0,
+      "description": "Seconds without a heartbeat before the link is reported down.",
+      "name": "timeout_s",
+      "read_only": false,
+      "validation": {
+        "min": 0.1
+      }
+    }
+  ],
+  "state_buffers": [
+    {
+      "canonical_type": "float64",
+      "initial_value": 0.0,
+      "name": "last_seen"
+    }
+  ]
+}

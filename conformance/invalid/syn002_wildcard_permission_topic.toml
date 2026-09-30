@@ -1,0 +1,16 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[security]
+enabled = true
+security_mode = "enforce"
+enclave = "/a/b"
+key_store_path = "/keys"
+
+[[security.permissions.publish]]
+topic = "/data/*"
+allow = true
