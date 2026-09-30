@@ -1,0 +1,19 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[subscribers]]
+id = "s"
+topic = "/in"
+type = "std_msgs/msg/String"
+zero_copy = true
+[interfaces."std_msgs/msg/String".fields]
+data = "string"
+
+[shared_memory]
+enabled = true
+segment_size_bytes = 1024
+max_loaned_messages = 4

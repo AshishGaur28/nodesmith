@@ -1,0 +1,16 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[parameters.step]
+type = "int64"
+default = 5
+[parameters.limit]
+type = "int64"
+default = 3
+[[parameter_constraints]]
+expression = "param.step <= param.limit"
+message = "step must not exceed limit"

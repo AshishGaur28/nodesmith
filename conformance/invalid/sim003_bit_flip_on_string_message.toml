@@ -1,0 +1,19 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[publishers]]
+id = "p"
+topic = "/out"
+type = "std_msgs/msg/String"
+[interfaces."std_msgs/msg/String".fields]
+data = "string"
+[simulation]
+enabled = true
+[[simulation.fault_injection]]
+target = "p"
+type = "bit_flip"
+probability = 0.5

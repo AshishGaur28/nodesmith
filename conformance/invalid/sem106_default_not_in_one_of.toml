@@ -1,0 +1,12 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[parameters.mode]
+type = "string"
+default = "c"
+[parameters.mode.validation]
+one_of = ["a", "b"]

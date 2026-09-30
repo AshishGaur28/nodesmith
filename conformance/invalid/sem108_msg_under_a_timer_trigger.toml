@@ -1,0 +1,13 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[pipelines]]
+name = "a"
+expressions = ["let y = msg.data"]
+[pipelines.trigger]
+type = "timer"
+period_ms = 100

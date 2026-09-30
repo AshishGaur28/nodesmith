@@ -266,6 +266,9 @@ def lower_manifest(m):
         if ty in ("float32", "float64"): d = float(d)
         val = v.get("validation", {})
         if ("min" in val and d < val["min"]) or ("max" in val and d > val["max"]): raise Diag("ERR_SEM_106", f"default of {k} out of bounds")
+        if "step" in val and ty in NUM and abs((d - val.get("min", 0)) / val["step"] - round((d - val.get("min", 0)) / val["step"])) > 1e-9: raise Diag("ERR_SEM_106", f"default of {k} not aligned to step")
+        if "one_of" in val and d not in val["one_of"]: raise Diag("ERR_SEM_106", f"default of {k} not in one_of")
+        if "fixed_length" in val and isinstance(d, list) and len(d) != val["fixed_length"]: raise Diag("ERR_SEM_106", f"default of {k} has the wrong length")
         p = {"name": k, "canonical_type": ty, "default_value": d, "read_only": v.get("read_only", False)}
         if "description" in v: p["description"] = v["description"]
         if val: p["validation"] = val

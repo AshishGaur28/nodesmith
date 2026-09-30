@@ -1,0 +1,24 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[publishers]]
+id = "p"
+topic = "/out"
+type = "my_msgs/msg/Big"
+zero_copy = true
+loan_pool_capacity = 2
+[interfaces."my_msgs/msg/Big"]
+fixed_size = true
+[interfaces."my_msgs/msg/Big".fields]
+a = "float64"
+b = "float64"
+c = "int32"
+
+[shared_memory]
+enabled = true
+segment_size_bytes = 39
+max_loaned_messages = 4

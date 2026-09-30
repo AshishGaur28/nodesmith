@@ -1,0 +1,20 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[subscribers]]
+id = "s"
+topic = "/in"
+type = "my_msgs/msg/Pose"
+[interfaces."my_msgs/msg/Pose".fields]
+"pose.x" = "float64"
+pose = "float64"
+[[pipelines]]
+name = "a"
+expressions = []
+[pipelines.trigger]
+type = "subscriber"
+source = "s"

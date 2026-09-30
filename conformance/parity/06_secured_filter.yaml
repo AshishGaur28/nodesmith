@@ -1,0 +1,64 @@
+manifest_version: '1'
+node:
+  name: imu_filter_node
+  namespace: /sensors/chassis
+  target_language: cpp
+  version: 1.0.0
+  description: Low-pass filters IMU acceleration and flags over-limit readings.
+parameters:
+  alpha:
+    type: float64
+    default: 0.85
+    description: Low-pass smoothing factor.
+    validation:
+      min: 0.0
+      max: 1.0
+  max_accel:
+    type: float64
+    default: 20.0
+    validation:
+      min: 0.0
+state_variables:
+  prev_z:
+    type: float64
+    initial_value: 0.0
+subscribers:
+- id: raw_imu_sub
+  topic: /sensor/imu/raw
+  type: sensor_msgs/msg/Imu
+  qos:
+    depth: 5
+    reliability: best_effort
+publishers:
+- id: filtered_imu_pub
+  topic: /sensor/imu/filtered
+  type: sensor_msgs/msg/Imu
+- id: status_pub
+  topic: /sensor/imu/status
+  type: std_msgs/msg/String
+interfaces:
+  sensor_msgs/msg/Imu:
+    fields:
+      header.frame_id: string
+      linear_acceleration.z: float64
+  std_msgs/msg/String:
+    fields:
+      data: string
+pipelines:
+- name: filter_imu
+  expressions:
+  - let z = low_pass(msg.linear_acceleration.z, state.prev_z, param.alpha)
+  - let over = abs(z) > param.max_accel
+  - state.prev_z = z
+  trigger:
+    type: subscriber
+    source: raw_imu_sub
+  output_mapping:
+    filtered_imu_pub.header.frame_id: msg.header.frame_id
+    filtered_imu_pub.linear_acceleration.z: z
+    status_pub.data: 'over ? "OVERLIMIT" : "OK"'
+security:
+  enabled: true
+  enclave: /sensors/chassis/imu_filter_node
+  security_mode: enforce
+  key_store_path: /etc/ros/sros2/keystore

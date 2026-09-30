@@ -26,6 +26,10 @@ Nodesmith turns a declarative node manifest (TOML, YAML or JSON) into a ROS 2 (J
 | Anything ROS-specific (build, run, real-time, shared memory, security) | Specified, never verified against ROS 2 Jazzy. |
 | `frontend/` | Empty scaffolding for a possible visual builder. No spec covers it. |
 
+## Conformance corpus
+
+[`conformance/`](conformance/README.md) is the test suite for the front end: known manifests with the exact result each must produce. It holds the expected IR and hash for every example (plus YAML and JSON copies), one rejected manifest per error code (each code has at least two), and manifests with several errors that must all be reported. Two independently written implementations, the product and a reference, are checked against it, and CI runs both on every push. Details are in the [conformance README](conformance/README.md).
+
 ## Try the front end
 
 ```bash

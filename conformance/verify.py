@@ -162,6 +162,36 @@ def cross_block(m, mode):
     return None
 
 
+def check_constraints(ir, m):
+    """ERR_SEM_106 (SPEC-07 §5 rule 3): each parameter constraint must hold on the defaults. Independent of the product: it turns the
+    constraint's IR nodes into Python source and evaluates that. (Integer wrap-around and float32 rounding are not modelled.)"""
+    import math
+    defaults = {p["name"]: p["default_value"] for p in ir["parameters"]}
+    for c in ir["parameter_constraints"]:
+        nodes = {n["id"]: n for n in c["nodes"]}
+        def src(i):
+            n = nodes[i]; at = n.get("attrs", {}); o = [src(x) for x in n["operands"]]; op = n["op"]
+            if op == "const": return repr(at["value"])
+            if op == "param": return repr(defaults[at["name"]])
+            if op == "unary": return f"(not {o[0]})" if at["operator"] == "!" else f"(-{o[0]})"
+            if op == "select": return f"({o[1]} if {o[0]} else {o[2]})"
+            if op == "index": return f"{o[0]}[{o[1]}]"
+            if op == "call": return f"F[{at['function']!r}]({', '.join(o)})"
+            py = {"&&": "and", "||": "or"}.get(at["operator"], at["operator"])
+            if at["operator"] == "/" and n["type_symbol"] in ("int32", "int64"): return f"int({o[0]} / {o[1]})"
+            if at["operator"] == "/": return f"DIV({o[0]}, {o[1]})"
+            if at["operator"] == "%": return f"({o[0]} - {o[1]} * int({o[0]} / {o[1]}))"
+            return f"({o[0]} {py} {o[1]})"
+        def div(a, b):
+            if b == 0: return math.nan if a == 0 else math.copysign(math.inf, a) * math.copysign(1.0, b)
+            return a / b
+        F = {"abs": abs, "min": min, "max": max, "clamp": lambda v, lo, hi: min(max(v, lo), hi), "sqrt": math.sqrt, "sin": math.sin, "cos": math.cos,
+             "pow": lambda a, b: float(a) ** float(b), "len": len, "to_int32": int, "to_int64": int, "to_float32": float, "to_float64": float}
+        try: ok = eval(src(c["root_node_id"]), {"F": F, "DIV": div, "int": int, "__builtins__": {}})
+        except (ZeroDivisionError, ValueError, OverflowError, IndexError, KeyError): raise Bad("ERR_SEM_106", "constraint faults on the defaults")
+        if not ok: raise Bad("ERR_SEM_106", "constraint violated by the defaults")
+
+
 def process(path, mode="debug"):
     """Runs Stages 1-4. Returns (ir, warnings) or raises Bad/Diag carrying the error code."""
     m = LOADERS[os.path.splitext(path)[1]](path)
@@ -171,6 +201,7 @@ def process(path, mode="debug"):
     code = cross_block(m, mode)
     if code: raise Bad(code, "cross-block rule")
     ir = lower_manifest(m)
+    check_constraints(ir, m)
     ir["extensions"] = {k: fill(m[k], MAN["properties"][k]) for k in sorted(EXT) if k in m}
     used = {p["trigger"].get("source") for p in m.get("pipelines", [])}
     warns = [w.split()[0] for w in front.WARN] + ["ERR_SEM_110" for s_ in m.get("subscribers", []) if s_["id"] not in used]

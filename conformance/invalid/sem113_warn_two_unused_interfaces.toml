@@ -1,0 +1,11 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[interfaces."std_msgs/msg/String".fields]
+data = "string"
+[interfaces."std_msgs/msg/Bool".fields]
+data = "bool"

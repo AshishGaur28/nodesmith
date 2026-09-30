@@ -176,6 +176,7 @@ Frozen surface: `schemas/node_manifest.schema.json` (revision `1.0.0`, `manifest
 == 8. Known Gaps
 
 * Language coverage: in v1 the extension blocks are C++ only (`ERR_SEM_114` for Python; `zero_copy` with another target is `ERR_SHM_001`). Python extensions are the first work after v1. The reference snippets for lifecycle, security, tracing and simulation exist for C++ only.
+* Parameter `validation.regex`: its dialect (ECMAScript in C++, `re` in Python) is unspecified and a default is not checked against it at build time.
 * RMW: v1 generates for `fastrtps` only (`node.rmw`, `SPEC-03` §2.1). Other RMWs are reserved and follow in a later phase; the choice is made at generation time, never at run time.
 * Snippets using ROS or Linux real-time APIs (`SPEC-03`, `05`–`07`, `09`, `10`, `11`) have not been compiled against those SDKs; the "Unverified against a ROS distribution" notes under each snippet list what needs checking against the pinned ROS distribution.
 * Target feasibility (`rclpy` lifecycle, loaned messages, callback groups) is asserted but unverified on ROS 2 Jazzy, the pinned distribution.

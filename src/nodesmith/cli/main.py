@@ -37,7 +37,7 @@ def main(argv=None) -> int:
     report, code = result.report, result.report.exit_code()
     if args.format == "json": print(report_json(report))
     else:
-        for d in report.diagnostics: print(d.render(), file=sys.stderr)
+        for d in report.diagnostics: print(d.render(result.source_lines), file=sys.stderr)
         if summary(report): print(summary(report), file=sys.stderr)
     if not result.ok: return code
     if args.command == "lower":

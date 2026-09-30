@@ -1,0 +1,15 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[parameters.a]
+type = "float64"
+default = 2.0
+[parameters.b]
+type = "float64"
+default = 3.0
+[[parameter_constraints]]
+expression = "(param.a > 1.0 ? param.a * param.b : 0.0) < 5.0"

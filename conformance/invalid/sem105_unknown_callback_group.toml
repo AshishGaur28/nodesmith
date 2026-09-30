@@ -1,0 +1,26 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[subscribers]]
+id = "s"
+topic = "/in"
+type = "std_msgs/msg/Float64"
+[interfaces."std_msgs/msg/Float64".fields]
+data = "float64"
+[realtime]
+enabled = true
+policy = "SCHED_OTHER"
+[[realtime.callback_groups]]
+name = "g1"
+type = "MutuallyExclusive"
+[[pipelines]]
+name = "a"
+callback_group = "nope"
+expressions = []
+[pipelines.trigger]
+type = "subscriber"
+source = "s"

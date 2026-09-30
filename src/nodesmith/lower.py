@@ -1,5 +1,6 @@
 """Stage 4: semantic checks and lowering to the language-neutral IR (SPEC-00, SPEC-01 §6-§7, SPEC-02, SPEC-12 §3)."""
 from .diagnostics import BuildError, Cascade
+from .constants import Fault, evaluate
 from .expr import (FUNCTIONS, NUMERIC, NUMERIC_ONLY, RESERVED, TARGET_KEYWORDS, common_type, parse_expression,
                    parse_statement, widens)
 
@@ -12,7 +13,7 @@ TRIGGER_INPUT = {"msg": "subscriber", "req": "service"}
 _FAILED = object()     # value of a local whose definition already failed and was reported
 
 
-def err(code, msg): return BuildError(code, msg)
+def err(code, msg, path=()): return BuildError(code, msg, path)
 
 
 def canonical_type(ros):
@@ -163,16 +164,17 @@ class PipelineBuilder:
 
 
 def _check_identifiers(m, report):
-    endpoints = [e for k in ("publishers", "subscribers", "services") for e in m.get(k, [])]
-    names = [e["id"] for e in endpoints] + [p["name"] for p in m.get("pipelines", [])] + list(m.get("parameters", {})) + list(m.get("state_variables", {}))
-    for n in names:
+    names = [(e["id"], (kind, i, "id")) for kind in ("publishers", "subscribers", "services") for i, e in enumerate(m.get(kind, []))]
+    names += [(p["name"], ("pipelines", i, "name")) for i, p in enumerate(m.get("pipelines", []))]
+    names += [(n, ("parameters", n)) for n in m.get("parameters", {})] + [(n, ("state_variables", n)) for n in m.get("state_variables", {})]
+    for n, path in names:
         with report.guard():
-            if n in RESERVED or n in TARGET_KEYWORDS: raise err("ERR_SEM_104", f"{n!r} is a reserved word")
+            if n in RESERVED or n in TARGET_KEYWORDS: raise err("ERR_SEM_104", f"{n!r} is a reserved word", path)
     seen = set()
-    for e in endpoints:
+    for n, path in names[:len([1 for k in ("publishers", "subscribers", "services") for _ in m.get(k, [])])]:
         with report.guard():
-            if e["id"] in seen: raise err("ERR_SEM_104", f"duplicate publisher/subscriber/service id {e['id']!r}")
-            seen.add(e["id"])
+            if n in seen: raise err("ERR_SEM_104", f"duplicate publisher/subscriber/service id {n!r}", path)
+            seen.add(n)
 
 
 def _parameters(m, report):
@@ -183,10 +185,17 @@ def _parameters(m, report):
             is_num = isinstance(d, (int, float)) and not isinstance(d, bool)
             ok = {"bool": isinstance(d, bool), "string": isinstance(d, str), "int32": isinstance(d, int) and not isinstance(d, bool),
                   "int64": isinstance(d, int) and not isinstance(d, bool), "float32": is_num, "float64": is_num}.get(ty, isinstance(d, list))
-            if not ok: raise err("ERR_SEM_102", f"default of parameter {name!r} is not a {ty}")
+            if not ok: raise err("ERR_SEM_102", f"default of parameter {name!r} is not a {ty}", ("parameters", name, "default"))
             if ty in ("float32", "float64"): d = float(d)
             val = p.get("validation", {})
-            if ("min" in val and d < val["min"]) or ("max" in val and d > val["max"]): raise err("ERR_SEM_106", f"default of {name!r} is out of bounds")
+            where = ("parameters", name, "default")
+            if ("min" in val and d < val["min"]) or ("max" in val and d > val["max"]): raise err("ERR_SEM_106", f"default of {name!r} is out of bounds", where)
+            if "step" in val and ty in ("int32", "int64", "float32", "float64"):      # aligned to min (0 if absent), SPEC-07 §3.2
+                steps = (d - val.get("min", 0)) / val["step"]
+                if abs(steps - round(steps)) > 1e-9: raise err("ERR_SEM_106", f"default of {name!r} is not a multiple of step {val['step']}", where)
+            if "one_of" in val and d not in val["one_of"]: raise err("ERR_SEM_106", f"default of {name!r} is not one of {val['one_of']}", where)
+            if "fixed_length" in val and isinstance(d, list) and len(d) != val["fixed_length"]:
+                raise err("ERR_SEM_106", f"default of {name!r} has length {len(d)}, not {val['fixed_length']}", where)
             item = {"name": name, "canonical_type": ty, "default_value": d, "read_only": p.get("read_only", False)}
             if "description" in p: item["description"] = p["description"]
             if val: item["validation"] = val
@@ -196,14 +205,26 @@ def _parameters(m, report):
 
 def _constraints(m, report):
     out = []
-    for c in m.get("parameter_constraints", []):
+    for i, c in enumerate(m.get("parameter_constraints", [])):
         with report.guard():
+            path = ("parameter_constraints", i, "expression")
             b = PipelineBuilder(m, "startup", {})
             root = b.expr(parse_expression(c["expression"]))
-            if root[1] != "bool": raise err("ERR_SEM_102", "a parameter constraint must be a bool expression")
-            if any(n["op"] in ("state", "input") for n in b.nodes): raise err("ERR_SEM_108", "a parameter constraint may reference only param.")
+            if root[1] != "bool": raise err("ERR_SEM_102", "a parameter constraint must be a bool expression", path)
+            if any(n["op"] in ("state", "input") for n in b.nodes): raise err("ERR_SEM_108", "a parameter constraint may reference only param.", path)
             out.append({"root_node_id": root[0], "nodes": b.nodes, **({"message": c["message"]} if "message" in c else {})})
     return out
+
+
+def _check_constraints(m, parameters, constraints, report):
+    """SPEC-07 §5 rule 3: every parameter_constraints expression must hold on the defaults."""
+    if len(parameters) != len(m.get("parameters", {})) or len(constraints) != len(m.get("parameter_constraints", [])): return   # an earlier error
+    defaults = {p["name"]: p["default_value"] for p in parameters}
+    for i, (c, src) in enumerate(zip(constraints, m.get("parameter_constraints", []))):
+        with report.guard(("parameter_constraints", i, "expression")):
+            try: holds = evaluate(c, defaults)
+            except Fault as f: raise err("ERR_SEM_106", f"constraint {src['expression']!r} faults on the defaults: {f}")
+            if not holds: raise err("ERR_SEM_106", src.get("message") or f"the defaults violate constraint {src['expression']!r}")
 
 
 def _callback_groups(m, dags, access, report):
@@ -222,8 +243,10 @@ def _callback_groups(m, dags, access, report):
     declared = {g["name"]: g["type"] for g in m.get("realtime", {}).get("callback_groups", [])}
     explicit = {p["name"]: p["callback_group"] for p in m.get("pipelines", []) if "callback_group" in p}
     assign, groups, k = {}, {}, 0
+    index = {p["name"]: i for i, p in enumerate(m.get("pipelines", []))}
     for comp in sorted(comps.values(), key=lambda c: c[0]):
-        with report.guard():
+        named_first = next((x for x in comp if x in explicit), comp[0])
+        with report.guard(("pipelines", index[named_first], "callback_group" if named_first in explicit else "name")):
             named = {explicit[x] for x in comp if x in explicit}
             stateful = any(access[x][0] or access[x][1] or access[x][2] for x in comp)
             if len(named) > 1: raise err("ERR_CNC_201", f"pipelines {comp} share state but name several callback groups")
@@ -242,7 +265,7 @@ def _callback_groups(m, dags, access, report):
     return assign, groups
 
 
-def _lower_pipeline(m, p, views, report):
+def _lower_pipeline(m, p, views, report, idx):
     """Returns (dag, access) for one pipeline. Errors in a statement or output target are reported and the rest still checked;
     an error in the trigger abandons the pipeline."""
     subs, srvs, pubs, msg_fields, srv_fields = views
@@ -254,11 +277,11 @@ def _lower_pipeline(m, p, views, report):
         if trig["source"] not in srvs: raise err("ERR_SEM_105", f"trigger source {trig['source']!r} is not a service")
         input_fields = srv_fields(srvs[trig["source"]]["type"], "request")
     b = PipelineBuilder(m, kind, input_fields)
-    for text in p.get("expressions", []):
-        with report.guard(): b.statement(parse_statement(text))
+    for i, text in enumerate(p.get("expressions", [])):
+        with report.guard(("pipelines", idx, "expressions", i)): b.statement(parse_statement(text))
     assignments = []
     for target in sorted(p.get("output_mapping", {})):
-        with report.guard():
+        with report.guard(("pipelines", idx, "output_mapping", target)):
             root, _, rest = target.partition(".")
             if root == "res":
                 if kind != "service": raise err("ERR_SEM_108", "`res.` is only available in a service pipeline")
@@ -289,47 +312,60 @@ def lower(m: dict, ext: dict, report):
     subs = {e["id"]: e for e in m.get("subscribers", [])}
     srvs = {e["id"]: e for e in m.get("services", [])}
     decl = m.get("interfaces", {})
-    msg_fields = lambda ty: field_tree(decl.get(ty, {}).get("fields", {}))
-    srv_fields = lambda ty, side: field_tree(decl.get(ty, {}).get(side, {}))
+    bad_types = set()                          # declarations already reported as inconsistent: their later uses stay silent
+
+    def msg_fields(ty):
+        if ty in bad_types: raise Cascade()
+        return field_tree(decl.get(ty, {}).get("fields", {}))
+
+    def srv_fields(ty, side):
+        if ty in bad_types: raise Cascade()
+        return field_tree(decl.get(ty, {}).get(side, {}))
+
     for ty in decl:                                                   # validate declarations up front (ERR_SEM_112)
-        with report.guard():
-            if "/msg/" in ty: msg_fields(ty)
-            else: srv_fields(ty, "request"), srv_fields(ty, "response")
+        with report.guard(("interfaces", ty)):
+            try:
+                if "/msg/" in ty: msg_fields(ty)
+                else: srv_fields(ty, "request"), srv_fields(ty, "response")
+            except BuildError:
+                bad_types.add(ty)
+                raise
     used = {e["type"] for e in [*pubs.values(), *subs.values(), *srvs.values()]}
-    for ty in sorted(set(decl) - used): report.warn("ERR_SEM_113", f"interface declaration {ty!r} is not used by any endpoint")
-    for f in ext.get("simulation", {}).get("fault_injection", []):    # SPEC-01 §5.1 rule 3 (targets and bit_flip)
-        with report.guard():
+    for ty in sorted(set(decl) - used): report.warn("ERR_SEM_113", f"interface declaration {ty!r} is not used by any endpoint", ("interfaces", ty))
+    for i, f in enumerate(ext.get("simulation", {}).get("fault_injection", [])):    # SPEC-01 §5.1 rule 3 (targets and bit_flip)
+        with report.guard(("simulation", "fault_injection", i, "target")):
             if f["target"] not in pubs: raise err("ERR_SEM_105", f"fault_injection target {f['target']!r} is not a publisher")
             if f["type"] == "bit_flip" and not decl.get(pubs[f["target"]]["type"], {}).get("fixed_size", False):
                 raise err("ERR_SIM_003", f"bit_flip needs {pubs[f['target']]['type']} declared fixed_size")
     parameters, constraints = _parameters(m, report), _constraints(m, report)
+    _check_constraints(m, parameters, constraints, report)
     states = [{"name": k, "canonical_type": v["type"],
                "initial_value": float(v["initial_value"]) if v["type"] in ("float32", "float64") else v["initial_value"]}
               for k, v in sorted(m.get("state_variables", {}).items())]
 
     views = (subs, srvs, pubs, msg_fields, srv_fields)
     dags, access, used_subs, service_uses, pipeline_failed = [], {}, set(), {}, False
-    for p in m.get("pipelines", []):
+    for idx, p in enumerate(m.get("pipelines", [])):
         trig = p["trigger"]
         if trig["type"] == "subscriber": used_subs.add(trig["source"])
         if trig["type"] == "service": service_uses[trig["source"]] = service_uses.get(trig["source"], 0) + 1
         before = len(report.errors)
-        with report.guard():
-            dag, acc = _lower_pipeline(m, p, views, report)
+        with report.guard(("pipelines", idx, "trigger", "source")):
+            dag, acc = _lower_pipeline(m, p, views, report, idx)
             dags.append(dag); access[p["name"]] = acc
         pipeline_failed |= len(report.errors) > before
-    for sid in srvs:
-        with report.guard():
+    for i, sid in enumerate(e["id"] for e in m.get("services", [])):
+        with report.guard(("services", i)):
             if service_uses.get(sid, 0) != 1: raise err("ERR_SEM_105", f"service {sid!r} must be served by exactly one pipeline")
-    for sid in subs:
-        if sid not in used_subs: report.warn("ERR_SEM_110", f"subscriber {sid!r} triggers no pipeline")
+    for i, sid in enumerate(e["id"] for e in m.get("subscribers", [])):
+        if sid not in used_subs: report.warn("ERR_SEM_110", f"subscriber {sid!r} triggers no pipeline", ("subscribers", i))
 
     # Gate 3 needs every pipeline's state access, so it only runs when all pipelines checked clean (SPEC-04 §3).
     assign, groups = ({}, {}) if pipeline_failed else _callback_groups(m, dags, access, report)
     for d in dags: d["callback_group"] = assign.get(d["id"])
     threads = m.get("concurrency", {}).get("threads", 1)
     executor = ext.get("realtime", {}).get("executor", {}).get("type") or ("MultiThreadedExecutor" if threads > 1 else "SingleThreadedExecutor")
-    with report.guard():
+    with report.guard(("concurrency", "threads")):
         if threads > 1 and executor != "MultiThreadedExecutor": raise err("ERR_RT_002", f"concurrency.threads > 1 needs MultiThreadedExecutor, not {executor}")
     if report.errors: return None
 

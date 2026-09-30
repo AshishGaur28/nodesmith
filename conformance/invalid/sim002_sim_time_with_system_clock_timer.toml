@@ -1,0 +1,17 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[simulation]
+enabled = true
+use_sim_time = true
+[[pipelines]]
+name = "a"
+expressions = []
+[pipelines.trigger]
+type = "timer"
+period_ms = 100
+clock = "system"

@@ -119,8 +119,8 @@ When an external ROS 2 client invokes a parameter change, the synthesized `OnSet
 
 | `step`
 | `int64`, `float64`
-| Value modulus step zero alignment
-| Rejects parameter update if not an integer multiple of step offset.
+| Value aligned to the step: `(value - min) / step` is an integer, with `min` taken as `0` when absent
+| Rejects parameter update if not an integer multiple of step from `min`.
 
 | `one_of`
 | `string`, `int64`

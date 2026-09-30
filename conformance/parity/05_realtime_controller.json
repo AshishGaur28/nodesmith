@@ -1,0 +1,65 @@
+{
+  "manifest_version": "1",
+  "node": {
+    "name": "flight_controller_node",
+    "namespace": "/control/avionics",
+    "target_language": "cpp"
+  },
+  "subscribers": [
+    {
+      "id": "imu_sub",
+      "topic": "/sensors/imu",
+      "type": "sensor_msgs/msg/Imu"
+    }
+  ],
+  "publishers": [
+    {
+      "id": "cmd_pub",
+      "topic": "/control/cmd",
+      "type": "std_msgs/msg/Float64"
+    }
+  ],
+  "interfaces": {
+    "sensor_msgs/msg/Imu": {
+      "fields": {
+        "linear_acceleration.x": "float64"
+      }
+    },
+    "std_msgs/msg/Float64": {
+      "fields": {
+        "data": "float64"
+      }
+    }
+  },
+  "pipelines": [
+    {
+      "name": "control_loop",
+      "expressions": [
+        "let cmd = clamp(msg.linear_acceleration.x * 0.1, -1.0, 1.0)"
+      ],
+      "trigger": {
+        "type": "subscriber",
+        "source": "imu_sub"
+      },
+      "output_mapping": {
+        "cmd_pub.data": "cmd"
+      }
+    }
+  ],
+  "lifecycle": {
+    "auto_configure": true,
+    "auto_activate": true,
+    "on_error_strategy": "Shutdown"
+  },
+  "realtime": {
+    "enabled": true,
+    "policy": "SCHED_FIFO",
+    "priority": 80,
+    "cpu_affinity": [
+      2,
+      3
+    ],
+    "memory_lock": true,
+    "stack_size_bytes": 1048576
+  }
+}

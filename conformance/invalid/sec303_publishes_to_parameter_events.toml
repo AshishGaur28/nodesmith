@@ -1,0 +1,17 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[security]
+enabled = true
+security_mode = "enforce"
+enclave = "/a/b"
+key_store_path = "/keys"
+
+[[publishers]]
+id = "p"
+topic = "/parameter_events"
+type = "std_msgs/msg/Float64"

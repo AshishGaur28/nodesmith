@@ -1,0 +1,13 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[simulation]
+enabled = true
+[[simulation.fault_injection]]
+target = "ghost"
+type = "freeze_value"
+probability = 0.1

@@ -13,24 +13,26 @@ _BAD_NUMBER = re.compile(r"^(0[xob][0-9a-fA-F_]+|\+\S|[+-]?(inf|nan)\b|\d[\d]*_\
 _TOML_VALUE = re.compile(r"^\s*[\w\"'.-]+\s*=\s*([^#]*)")
 
 
-def _syn(msg): return BuildError("ERR_SYN_001", msg)
+def _syn(msg, line=None, column=None): return BuildError("ERR_SYN_001", msg, line=line, column=column)
 
 
-def _report_null_and_dates(o, path, report):
+def _report_null_and_dates(o, path, report):   # `path` is a tuple
     if o is None or isinstance(o, (datetime.datetime, datetime.date, datetime.time)):
-        report.error("ERR_SYN_001", f"{path or '<root>'}: null and date-time values are not allowed")
+        report.error("ERR_SYN_001", f"{'.'.join(map(str, path)) or '<root>'}: null and date-time values are not allowed", path)
     elif isinstance(o, dict):
-        for k, v in o.items(): _report_null_and_dates(v, f"{path}.{k}" if path else k, report)
+        for k, v in o.items(): _report_null_and_dates(v, path + (k,), report)
     elif isinstance(o, list):
-        for i, v in enumerate(o): _report_null_and_dates(v, f"{path}[{i}]", report)
+        for i, v in enumerate(o): _report_null_and_dates(v, path + (i,), report)
 
 
 def _load_toml(text, report):
     try: doc = tomllib.loads(text)
-    except tomllib.TOMLDecodeError as e: raise _syn(str(e))
+    except tomllib.TOMLDecodeError as e:
+        at = re.search(r"\(at line (\d+), column (\d+)\)", str(e))
+        raise _syn(re.sub(r" \(at .*\)$", "", str(e)), *(map(int, at.groups()) if at else ()))
     for n, line in enumerate(text.splitlines(), 1):
         m = _TOML_VALUE.match(line)
-        if m and _BAD_NUMBER.match(m.group(1).strip()): report.error("ERR_SYN_001", f"line {n}: number form not allowed: {m.group(1).strip()}")
+        if m and _BAD_NUMBER.match(m.group(1).strip()): report.error("ERR_SYN_001", f"number form not allowed: {m.group(1).strip()}", line=n, column=m.start(1) + 1)
     return doc
 
 
@@ -51,14 +53,16 @@ _Yaml12.add_implicit_resolver("tag:yaml.org,2002:bool", re.compile(r"^(?:true|Tr
 def _load_yaml(text, report):
     try:
         for ev in yaml.parse(text, Loader=_Yaml12):
-            line = ev.start_mark.line + 1
-            if isinstance(ev, yaml.AliasEvent) or getattr(ev, "anchor", None): report.error("ERR_SYN_001", f"line {line}: YAML anchors and aliases are not allowed")
-            if getattr(ev, "tag", None) and ev.tag.startswith("!"): report.error("ERR_SYN_001", f"line {line}: custom YAML tags are not allowed")
+            at = dict(line=ev.start_mark.line + 1, column=ev.start_mark.column + 1)
+            if isinstance(ev, yaml.AliasEvent) or getattr(ev, "anchor", None): report.error("ERR_SYN_001", "YAML anchors and aliases are not allowed", **at)
+            if getattr(ev, "tag", None) and ev.tag.startswith("!"): report.error("ERR_SYN_001", "custom YAML tags are not allowed", **at)
             if isinstance(ev, yaml.ScalarEvent) and ev.implicit[0] and not ev.tag:
-                if ev.value == "<<": report.error("ERR_SYN_001", f"line {line}: YAML merge keys are not allowed")
-                elif _BAD_NUMBER.match(ev.value): report.error("ERR_SYN_001", f"line {line}: number form not allowed: {ev.value}")
+                if ev.value == "<<": report.error("ERR_SYN_001", "YAML merge keys are not allowed", **at)
+                elif _BAD_NUMBER.match(ev.value): report.error("ERR_SYN_001", f"number form not allowed: {ev.value}", **at)
         return None if report.errors else yaml.load(text, Loader=_Yaml12)    # the parser would only repeat what was reported
-    except yaml.YAMLError as e: raise _syn(str(e))
+    except yaml.YAMLError as e:
+        mark = getattr(e, "problem_mark", None)
+        raise _syn(getattr(e, "problem", None) or str(e), *((mark.line + 1, mark.column + 1) if mark else ()))
 
 
 def _load_json(text, report):
@@ -68,7 +72,7 @@ def _load_json(text, report):
         return dict(items)
     def constant(c): raise _syn(f"number form not allowed: {c}")
     try: return json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
-    except json.JSONDecodeError as e: raise _syn(str(e))
+    except json.JSONDecodeError as e: raise _syn(e.msg, e.lineno, e.colno)
 
 
 _LOADERS = {".toml": _load_toml, ".yaml": _load_yaml, ".yml": _load_yaml, ".json": _load_json}
@@ -82,7 +86,7 @@ def load_manifest(path, report: Report):
     try:
         if loader is None: raise _syn(f"unknown manifest format {path.suffix!r} (use .toml, .yaml or .json)")
         doc = loader(path.read_text(encoding="utf-8"), report)
-        if doc is not None or not report.errors: _report_null_and_dates(doc, "", report)
+        if doc is not None or not report.errors: _report_null_and_dates(doc, (), report)
     except BuildError as e:
         report.add(e.diagnostic)
         return None

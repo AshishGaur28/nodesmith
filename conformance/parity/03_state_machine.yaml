@@ -1,0 +1,57 @@
+manifest_version: '1'
+node:
+  name: counter_node
+  namespace: /demo
+  target_language: python
+parameters:
+  limit:
+    type: int64
+    default: 10
+  step:
+    type: int64
+    default: 1
+    validation:
+      min: 1
+parameter_constraints:
+- expression: param.step <= param.limit
+  message: step must not exceed limit
+state_variables:
+  count:
+    type: int64
+    initial_value: 0
+publishers:
+- id: count_pub
+  topic: /demo/count
+  type: std_msgs/msg/Int64
+services:
+- id: reset_srv
+  name: /demo/reset
+  type: std_srvs/srv/Trigger
+interfaces:
+  std_msgs/msg/Int64:
+    fields:
+      data: int64
+  std_srvs/srv/Trigger:
+    response:
+      success: bool
+      message: string
+pipelines:
+- name: tick
+  expressions:
+  - 'let next = state.count + param.step >= param.limit ? 0 : state.count + param.step'
+  - state.count = next
+  trigger:
+    type: timer
+    period_ms: 500
+    clock: ros
+  output_mapping:
+    count_pub.data: next
+- name: reset
+  expressions:
+  - state.count = 0
+  trigger:
+    type: service
+    source: reset_srv
+  output_mapping:
+    res.success: 'true'
+    res.message: '"counter reset"'

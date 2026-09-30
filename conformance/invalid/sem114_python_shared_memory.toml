@@ -1,0 +1,11 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "python"
+
+[shared_memory]
+enabled = true
+segment_size_bytes = 1024
+max_loaned_messages = 4

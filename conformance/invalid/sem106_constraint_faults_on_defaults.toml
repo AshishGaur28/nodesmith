@@ -1,0 +1,12 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[parameters.n]
+type = "int64"
+default = 0
+[[parameter_constraints]]
+expression = "10 / param.n > 1"

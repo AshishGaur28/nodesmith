@@ -20,7 +20,7 @@ Work:
 
 Exit: `python conformance/verify.py` passes, the decisions in items 1 and 2 are written into SPEC-01/SPEC-03/INDEX, and `SPEC-00`, `SPEC-01`, `SPEC-02`, both schemas and the registry are Frozen (`specs/INDEX.adoc` §7).
 
-Status: *done.* The corpus is `conformance/` (8 valid manifests with expected IR and hash, 4 format-parity copies, 56 invalid cases covering every manifest-triggerable build code). Building it found and fixed eight spec gaps; see the M0 record below.
+Status: *done.* The corpus is `conformance/` (8 valid manifests with expected IR and hash, YAML and JSON copies of all 8, and invalid cases covering every manifest-triggerable build code; counts have grown since, see `conformance/`). Building it found and fixed eight spec gaps; see the M0 record below.
 
 === M0 record: gaps found while building the corpus
 
@@ -46,9 +46,20 @@ Status: *done* (`src/nodesmith/`: `ingest`, `schema`, `rules`, `expr`, `lower`, 
 
 References, types, expression type-checking, parameter constraints, the conflict graph and callback-group derivation (SPEC-02, 12).
 
-Already in place from M1: symbol and type checks, reference and interface checks, and the SPEC-12 §3 grouping. Remaining for M2: source positions (file, line, column) in diagnostics and the text rendering of SPEC-04 §4.4, more corpus cases per code (each currently has one or two), property tests for the grouping algorithm, and the `nodesmith validate` output for `--format=json` checked against the §4.4 schema.
+Status: *done.*
 
-Exit: each semantic error code has several cases, callback-group assignment matches hand-computed results for the examples, and diagnostics carry positions.
+- Source positions: every diagnostic carries file, line and column (TOML, YAML and JSON) and the console form shows the source line with a caret (`SPEC-04` §4.4).
+- Every code a manifest can trigger has at least two corpus cases (85 single-error cases and 8 multi-error ones), and `pytest` also asserts that each case reports exactly its one code and has a position inside the file.
+- Callback groups are checked against answers worked out by hand for all eight examples, and as properties on random inputs (conflicting pipelines share a group, groups are exactly the conflict components, numbering has no gaps, the result does not depend on declaration order).
+- `--format=json` output is validated against the schema printed in `SPEC-04` §4.4, read from the spec itself.
+
+Gaps found and fixed while doing it:
+
+. `ERR_SEM_106` was specified for `parameter_constraints`, `step`, `one_of` and `fixed_length` (`SPEC-07` §5) but only `min`/`max` were checked. All are now checked against the defaults; constraints are evaluated (`src/nodesmith/constants.py`, and independently in the reference). `step` is now defined as aligned to `min` (0 if absent).
+. An inconsistent interface declaration was reported again at every use; later uses are now silent.
+. `validation.regex` has no defined dialect and is not checked: recorded as a known gap.
+
+Not covered: float32 rounding and integer wrap-around are not modelled by the reference's constraint check (the product models wrap-around, not float32 rounding).
 
 == M3. C++ synthesis (core)
 

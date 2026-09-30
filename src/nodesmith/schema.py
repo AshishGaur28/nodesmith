@@ -29,16 +29,18 @@ def check(manifest: dict, report) -> None:
     """Reports every schema violation, in document order, as ERR_SYN_002."""
     seen = set()
     for e in sorted(_validator().iter_errors(manifest), key=lambda e: [str(p) for p in e.path]):
-        where = "/".join(str(p) for p in e.path) or "<root>"
+        path = tuple(e.path)
+        where = "/".join(str(p) for p in path) or "<root>"
         if e.validator == "additionalProperties":
             known = set(e.schema.get("properties", {}))
             extra = sorted(k for k in e.instance if k not in known and not k.startswith("x-"))
             msg = f"{where}: unknown key{'s' if len(extra) > 1 else ''} {', '.join(map(repr, extra))} (keys starting with x- are reserved for tooling)"
+            path += (extra[0],) if extra else ()
         else:
             msg = f"{where}: {e.message[:160]}"
         if msg not in seen:
             seen.add(msg)
-            report.error("ERR_SYN_002", msg)
+            report.error("ERR_SYN_002", msg, path)
 
 
 def strip_x(o):
