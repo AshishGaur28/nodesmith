@@ -3,12 +3,12 @@
 > [!WARNING]
 > **Nothing is shipped.** Nodesmith is an early work in progress and has no release.
 >
-> - **It does not generate any code yet.** `nodesmith generate` is not implemented, so you cannot turn a manifest into a ROS 2 package today.
-> - **It has never been run against ROS 2.** Nothing has been compiled or tested with a real ROS 2 Jazzy installation.
+> - **The generated C++ has never been built against ROS 2.** `nodesmith generate` writes a C++ package for simple manifests (no extension blocks), but nothing has been compiled or run with a real ROS 2 Jazzy installation. It has only been compiled and exercised against a local stand-in for rclcpp, so expect it to fail against the real thing until the Jazzy CI job has passed.
+> - **Python generation is not implemented.**
 > - **Not published.** There is no PyPI package, no release and no version you can depend on. Do not use it in a project.
 > - **Everything can still change.** The specs are drafts (only the manifest format is frozen, and only for this unreleased project).
 
-What works today is the front end only: `nodesmith validate` and `nodesmith lower` check a manifest and turn it into a language-neutral intermediate representation (IR). That is a building block for the generators, not something you can use to build a robot node.
+What works today: `nodesmith validate` and `nodesmith lower` check a manifest and turn it into a language-neutral intermediate representation (IR), and `nodesmith generate` writes a C++ package from it for the core blocks. The numeric behaviour of the generated pipelines is tested against a reference interpreter on random inputs; everything that touches ROS is not verified yet.
 
 ## What it is meant to become
 
@@ -20,7 +20,8 @@ Nodesmith turns a declarative node manifest (TOML, YAML or JSON) into a ROS 2 (J
 |---|---|
 | Specifications ([`docs/specs/`](docs/specs/INDEX.adoc)) | Drafts. `SPEC-00`, `01` and `02` (manifest, IR, expression language) are frozen for this unreleased project; the rest can change. |
 | Front end (`nodesmith validate`, `nodesmith lower`) | Works. Passes the conformance corpus. |
-| C++ and Python generators (`nodesmith generate`) | Not started. `templates/` is empty. |
+| C++ generator (`nodesmith generate`, core blocks) | Written. Pipelines checked against a reference interpreter; ROS glue checked only against a local stand-in; never built with real ROS 2. Extension blocks are refused. |
+| Python generator | Not started. |
 | `nodesmith bench`, `nodesmith clean` | Not implemented. |
 | Python support for extension blocks | Planned right after v1. v1 supports the core blocks only. |
 | Anything ROS-specific (build, run, real-time, shared memory, security) | Specified, never verified against ROS 2 Jazzy. |
@@ -36,7 +37,8 @@ Nodesmith turns a declarative node manifest (TOML, YAML or JSON) into a ROS 2 (J
 pip install -e '.[dev]'
 nodesmith validate --manifest examples/02_filter_pipeline.toml
 nodesmith lower --manifest examples/02_filter_pipeline.toml --output build/imu.ir.json
-pytest                                  # product front end vs. the corpus
+nodesmith generate --manifest examples/02_filter_pipeline.toml --output-dir build/imu_filter_node   # C++ package, core blocks only
+pytest                                  # front end vs. the corpus; generated C++ vs. a reference interpreter (needs a C++ compiler)
 python conformance/verify.py            # the corpus vs. the independent reference
 python tools/check_specs.py             # specs and schemas agree
 ```

@@ -13,6 +13,8 @@ class Compiled:
     ir: dict | None
     report: Report
     source_lines: list | None = None
+    target_language: str | None = None     # build choices (not part of the IR, SPEC-00 §4)
+    rmw: str | None = None
 
     @property
     def ok(self): return not self.report.errors
@@ -32,7 +34,7 @@ def _position(report, path, text):
     report.diagnostics = out
 
 
-def compile_manifest(path, mode="debug", strict=False) -> Compiled:
+def compile_manifest(path, mode="debug", strict=False, target_language=None, rmw=None) -> Compiled:
     """Gates 1-3 of SPEC-04 §3 for a manifest file.
 
     Gate 1 stops the run (all its errors are reported, but later gates would work on untrusted input; a syntax error in
@@ -46,8 +48,12 @@ def compile_manifest(path, mode="debug", strict=False) -> Compiled:
     if manifest is not None and not report.errors:     # an ERR_SYN_001 means the document cannot be trusted, so no schema check
         schema.check(manifest, report)
     ir = None
+    settings = (None, None)
     if not report.errors:
         manifest = schema.strip_x(manifest)
+        if target_language: manifest["node"]["target_language"] = target_language     # --target-language and --rmw override the manifest
+        if rmw: manifest["node"]["rmw"] = rmw
+        settings = (manifest["node"]["target_language"], manifest["node"].get("rmw", "fastrtps"))
         ext = schema.effective_extensions(manifest)
         rules.check(manifest, ext, mode, report)
         ir = lower(manifest, ext, report)
@@ -57,4 +63,4 @@ def compile_manifest(path, mode="debug", strict=False) -> Compiled:
         ir = None
     text = path.read_text(encoding="utf-8")
     _position(report, path, text)
-    return Compiled(ir, report, text.splitlines())
+    return Compiled(ir, report, text.splitlines(), *settings)

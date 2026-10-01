@@ -63,12 +63,19 @@ Not covered: float32 rounding and integer wrap-around are not modelled by the re
 
 == M3. C++ synthesis (core)
 
-CI: `.github/workflows/ci.yml` already runs the front-end checks and the ThreadSanitizer test on every push. M3 adds a `jazzy` job (container `ros:jazzy` on an `ubuntu-24.04` runner) that generates the examples and builds them with `colcon`. Nothing needs a local ROS installation.
+Synthesis and atomic emission for node, parameters, state, pub/sub, services, timers, startup pipelines and pipelines, plus the runtime library (`SnapshotRing`, `RunGate`, `DiagRing`, numeric helpers).
 
-Synthesis and atomic emission for node, parameters, state, pub/sub, services and pipelines, plus the runtime library (`SnapshotRing`, `RunGate`).
-Compile and run the output against the pinned distribution.
+Status: *written; the ROS part is not verified.*
 
-Exit: examples 01-03 generate, build with `colcon`, and behave as SPEC-02 §7 specifies when driven with test messages. This closes the ROS-side "unverified" notes for SPEC-03.
+- `nodesmith generate` writes `CMakeLists.txt`, `package.xml` (depending on the chosen RMW only), `pipelines.hpp`, `runtime.hpp`, the node header and source, and `main.cpp`, into a temporary directory that is swapped in atomically (`src/nodesmith/cpp/`, `templates/cpp_rclcpp/`).
+- *Verified locally:* the pipelines (`pipelines.hpp`) are compiled with `-Wall -Wextra -Werror` and compared with a reference interpreter on random inputs, over every operator, built-in, field type and sink rule (`tests/fixtures/semantics.toml`), and the test itself is shown to catch a broken helper. The numeric helpers and the diagnostics ring have their own tests under UBSan and ThreadSanitizer. Output is byte-identical across runs, and the complete output for five examples is checked in (`tests/golden/`).
+- *Verified only against a stand-in:* the ROS glue (`tests/support/ros_stub/`, drivers in `tests/cpp/drivers/`) compiles against the signatures we believe Jazzy has and behaves as specified: staged state, publication order, parameter validation and snapshots, faults and diagnostics, timers, services. The stand-in cannot tell us that real rclcpp agrees.
+- *Not verified:* everything on real ROS 2 Jazzy. The `jazzy` job in `.github/workflows/ci.yml` builds the example nodes with `colcon` and runs `tests/jazzy/e2e.py` against them; it has not been run, and its first run is expected to need fixes.
+- *Refused for now:* extension blocks (M4), `zero_copy`, parameter arrays of `int32`/`float32`, `uint64[]`/`int64[]` fields and fixed-size ROS arrays.
+
+Exit: examples 01-03, 07 and 08 build with `colcon` and pass `tests/jazzy/e2e.py` in the `jazzy` job. This closes the ROS-side "unverified" notes for SPEC-03.
+
+Bugs found by the differential test while building this: fused multiply-add changed `low_pass` results on ARM (now `-ffp-contract=off`, and `SPEC-02` §6 forbids fusing), and the front end widened the arguments of `len` and `to_*` to `float64`, which broke `to_int64` of a large integer and `len` of a string (fixed in the product and the reference, with new corpus cases).
 
 == M4. C++ extensions
 

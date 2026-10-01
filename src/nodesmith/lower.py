@@ -1,7 +1,7 @@
 """Stage 4: semantic checks and lowering to the language-neutral IR (SPEC-00, SPEC-01 §6-§7, SPEC-02, SPEC-12 §3)."""
 from .diagnostics import BuildError, Cascade
 from .constants import Fault, evaluate
-from .expr import (FUNCTIONS, NUMERIC, NUMERIC_ONLY, RESERVED, TARGET_KEYWORDS, common_type, parse_expression,
+from .expr import (FLOAT_ARGS, FUNCTIONS, NUMERIC, NUMERIC_ONLY, RESERVED, TARGET_KEYWORDS, common_type, parse_expression,
                    parse_statement, widens)
 
 IR_VERSION = "1.0.0"
@@ -140,7 +140,8 @@ class PipelineBuilder:
             vals = [self.coerce(v, ty) for v in vals]
         else:
             ty = rule
-            if name not in ("now_sec", "dt_sec"): vals = [self.coerce(v, "float64") for v in vals]
+            if name in FLOAT_ARGS: vals = [self.coerce(v, "float64") for v in vals]
+            if name == "len" and not (vals[0][1] in ("string", "bytes") or vals[0][1].endswith("[]")): raise err("ERR_SEM_102", "len needs a string, bytes or an array")
         return self.node("call", ty, [v[0] for v in vals], {"function": name})
 
     def statement(self, st):

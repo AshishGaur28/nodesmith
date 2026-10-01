@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nodesmith"
 version = "0.1.0"
-description = "Config-driven ROS 2 node generator (pre-alpha: front end only, no code generation yet)"
+description = "Config-driven ROS 2 node generator (pre-alpha: C++ generation for core manifests, never built against ROS 2)"
 classifiers = ["Development Status :: 2 - Pre-Alpha"]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
-dependencies = ["jsonschema>=4.18", "pyyaml>=6"]
+dependencies = ["jsonschema>=4.18", "pyyaml>=6", "jinja2>=3.1"]
 
 [project.optional-dependencies]
 dev = ["pytest"]

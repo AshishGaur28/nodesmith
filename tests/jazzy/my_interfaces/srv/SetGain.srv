@@ -1,0 +1,4 @@
+float64 gain
+---
+bool accepted
+float64 applied

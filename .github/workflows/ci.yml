@@ -28,9 +28,47 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: |
+      - name: SPEC-12 reference primitives under ThreadSanitizer
+        run: |
           cd docs/specs/reference/cpp
           g++ -std=c++17 -O1 -g -fsanitize=thread concurrency_primitives_test.cpp -o test -pthread
           ./test
+      - name: Numeric helpers and the diagnostics ring under ThreadSanitizer and UBSan
+        run: |
+          mkdir -p /tmp/rt
+          cat templates/cpp_rclcpp/concurrency_primitives.hpp templates/cpp_rclcpp/runtime_helpers.hpp > /tmp/rt/runtime.hpp
+          g++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=thread,undefined -I/tmp/rt tests/cpp/test_runtime_helpers.cpp -o /tmp/rt/test -pthread
+          /tmp/rt/test
 
-  # M3 adds a `jazzy` job here: container `ros:jazzy`, generate the example nodes, `colcon build`, run their behavioural tests.
+  jazzy:
+    # The generated C++ against real ROS 2 Jazzy: generate the example nodes, build them with colcon, run them and check their behaviour.
+    # This is the only job that proves the generated glue code compiles against rclcpp; the local stand-in (tests/support/ros_stub) cannot.
+    runs-on: ubuntu-24.04
+    container: ros:jazzy-ros-base
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          apt-get update
+          apt-get install -y python3-venv python3-pip python3-colcon-common-extensions build-essential
+      - name: Install nodesmith
+        run: |
+          python3 -m venv /opt/nodesmith-venv
+          /opt/nodesmith-venv/bin/pip install -e '.[dev]'
+      - name: Generate the example nodes into a colcon workspace
+        run: |
+          mkdir -p ws/src
+          cp -r tests/jazzy/my_interfaces ws/src/
+          for pair in 01_simple_pubsub:echo_node 02_filter_pipeline:imu_filter_node 03_state_machine:counter_node 07_gain_service:gain_node 08_link_watchdog:link_watchdog_node; do
+            /opt/nodesmith-venv/bin/nodesmith generate --manifest examples/${pair%%:*}.toml --output-dir ws/src/${pair##*:}
+          done
+          ls ws/src
+      - name: Build
+        run: |
+          . /opt/ros/jazzy/setup.sh
+          cd ws && colcon build --event-handlers console_direct+
+      - name: Run the nodes and check their behaviour
+        run: |
+          . /opt/ros/jazzy/setup.sh
+          . ws/install/setup.sh
+          python3 tests/jazzy/e2e.py

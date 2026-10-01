@@ -6,6 +6,8 @@ from pathlib import Path
 from .. import __version__
 from ..canonical import canonical_json, ir_hash
 from ..compiler import compile_manifest
+from ..cpp.generate import package, write_package
+from ..cpp.pipeline import Unsupported
 from ..diagnostics import report_json, summary
 
 
@@ -21,16 +23,19 @@ def _parser():
     v.add_argument("--manifest", required=True); v.add_argument("--strict", action="store_true")
     l = sub.add_parser("lower", help="Gates 1-3, then write the IR")
     l.add_argument("--manifest", required=True); l.add_argument("--output", required=True); l.add_argument("--strict", action="store_true")
-    for name in ("generate", "bench", "clean"): sub.add_parser(name, help="not implemented yet").add_argument("--manifest")
+    g = sub.add_parser("generate", help="Gates 1-3, then write the source package")
+    g.add_argument("--manifest", required=True); g.add_argument("--output-dir", required=True); g.add_argument("--strict", action="store_true")
+    g.add_argument("--target-language", choices=("cpp", "python")); g.add_argument("--rmw", choices=("fastrtps",))
+    for name in ("bench", "clean"): sub.add_parser(name, help="not implemented yet").add_argument("--manifest")
     return p
 
 
 def main(argv=None) -> int:
     args = _parser().parse_args(argv)
-    if args.command not in ("validate", "lower"):
+    if args.command not in ("validate", "lower", "generate"):
         print(f"nodesmith {args.command}: not implemented in this revision", file=sys.stderr)
         return 1
-    try: result = compile_manifest(args.manifest, args.mode, args.strict)
+    try: result = compile_manifest(args.manifest, args.mode, args.strict, getattr(args, "target_language", None), getattr(args, "rmw", None))
     except OSError as e:
         print(f"nodesmith: {e}", file=sys.stderr)
         return 1
@@ -42,6 +47,17 @@ def main(argv=None) -> int:
     if not result.ok: return code
     if args.command == "lower":
         try: Path(args.output).write_text(canonical_json(result.ir), encoding="utf-8")
+        except OSError as e:
+            print(f"nodesmith: {e}", file=sys.stderr)
+            return 1
+    if args.command == "generate":
+        if result.target_language != "cpp":
+            print(f"nodesmith generate: target {result.target_language} is not implemented yet", file=sys.stderr)
+            return 1
+        try: write_package(package(result.ir, result.rmw), args.output_dir)
+        except Unsupported as e:
+            print(f"nodesmith generate: {e}", file=sys.stderr)
+            return 1
         except OSError as e:
             print(f"nodesmith: {e}", file=sys.stderr)
             return 1

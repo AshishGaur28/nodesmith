@@ -16,7 +16,8 @@ FUNCTIONS = {"abs": (1, "same"), "min": (2, "common"), "max": (2, "common"), "cl
              "deadband": (2, "float64"), "rate_limit": (4, "float64"), "len": (1, "int64"), "to_int32": (1, "int32"),
              "to_int64": (1, "int64"), "to_float32": (1, "float32"), "to_float64": (1, "float64"), "now_sec": (0, "float64"),
              "dt_sec": (0, "float64")}
-NUMERIC_ONLY = {"abs", "min", "max", "clamp", "sqrt", "sin", "cos", "pow", "low_pass", "deadband", "rate_limit"}
+NUMERIC_ONLY = {"abs", "min", "max", "clamp", "sqrt", "sin", "cos", "pow", "low_pass", "deadband", "rate_limit", "to_int32", "to_int64", "to_float32", "to_float64"}
+FLOAT_ARGS = {"sqrt", "sin", "cos", "pow", "low_pass", "deadband", "rate_limit"}     # their arguments are widened to float64
 RESERVED = {"let", "state", "param", "msg", "req", "res", "true", "false"} | set(FUNCTIONS)
 _CPP_KEYWORDS = set("""alignas alignof and and_eq asm auto bitand bitor bool break case catch char class compl concept const consteval
 constexpr constinit const_cast continue co_await co_return co_yield decltype default delete do double dynamic_cast else enum explicit

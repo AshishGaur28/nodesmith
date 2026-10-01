@@ -1,0 +1,302 @@
+# Exercises every operator, built-in function, field type and sink rule of SPEC-02, for the differential test of the generated C++
+# (tests/integration/test_cpp_semantics.py). Not a realistic node.
+manifest_version = "1"
+
+[node]
+name = "semantics_node"
+namespace = "/test"
+target_language = "cpp"
+
+[parameters.p_i32]
+type = "int32"
+default = 3
+[parameters.p_i64]
+type = "int64"
+default = 5
+[parameters.p_f64]
+type = "float64"
+default = 2.5
+[parameters.p_f32]
+type = "float32"
+default = 1.5
+[parameters.p_bool]
+type = "bool"
+default = true
+[parameters.p_text]
+type = "string"
+default = "OK"
+
+[state_variables.s_i32]
+type = "int32"
+initial_value = 0
+[state_variables.s_i64]
+type = "int64"
+initial_value = 0
+[state_variables.s_f64]
+type = "float64"
+initial_value = 0.0
+[state_variables.s_f32]
+type = "float32"
+initial_value = 0.0
+[state_variables.s_bool]
+type = "bool"
+initial_value = false
+[state_variables.s_text]
+type = "string"
+initial_value = ""
+
+[[subscribers]]
+id = "in_sub"
+topic = "/test/in"
+type = "test_msgs/msg/All"
+
+[[publishers]]
+id = "out_pub"
+topic = "/test/out"
+type = "test_msgs/msg/Out"
+
+[[services]]
+id = "calc_srv"
+name = "/test/calc"
+type = "test_msgs/srv/Calc"
+
+[interfaces."test_msgs/msg/All".fields]
+i8 = "int8"
+u8 = "uint8"
+i16 = "int16"
+u16 = "uint16"
+i32 = "int32"
+u32 = "uint32"
+i64 = "int64"
+u64 = "uint64"
+f32 = "float32"
+f64 = "float64"
+flag = "bool"
+text = "string"
+stamp = "time"
+dur = "duration"
+floats = "float64[]"
+ints = "int32[]"
+"nested.x" = "float64"
+"nested.deeper.n" = "int32"
+
+[interfaces."test_msgs/msg/Out".fields]
+o_i8 = "int8"
+o_u8 = "uint8"
+o_i16 = "int16"
+o_u16 = "uint16"
+o_u32 = "uint32"
+o_u64 = "uint64"
+o_i32 = "int32"
+o_i64 = "int64"
+o_f32 = "float32"
+o_f64 = "float64"
+o_bool = "bool"
+o_text = "string"
+o_stamp = "time"
+o_dur = "duration"
+o_floats = "float64[]"
+o_ints = "int32[]"
+"o_nested.y" = "float64"
+
+[interfaces."test_msgs/srv/Calc".request]
+a = "int32"
+b = "int32"
+[interfaces."test_msgs/srv/Calc".response]
+sum = "int32"
+ratio = "float64"
+ok = "bool"
+
+# integer arithmetic wraps; division and modulo truncate toward zero and fault on zero and INT_MIN / -1
+[[pipelines]]
+name = "int_arith"
+expressions = [
+  "let a = msg.i32 + param.p_i32",
+  "let b = msg.i32 * msg.i32",
+  "let c = msg.i64 - param.p_i64",
+  "let d = -msg.i32",
+  "let e = msg.i32 / param.p_i32",
+  "let f = msg.i32 % param.p_i32",
+  "let g = msg.i64 * param.p_i64",
+  "let h = msg.u32 + msg.i32",
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "in_sub"
+[pipelines.output_mapping]
+"out_pub.o_i32" = "a + d + e + f"
+"out_pub.o_i64" = "c + g + h + to_int64(b)"
+
+# ?:, && and || evaluate only the branch taken: a guarded division never faults
+[[pipelines]]
+name = "lazy"
+expressions = [
+  "let safe = param.p_i32 != 0 ? msg.i32 / param.p_i32 : 0",
+  "let guard = param.p_i32 != 0 && msg.i32 / param.p_i32 > 1",
+  "let either = param.p_i32 == 0 || msg.i32 % param.p_i32 == 0",
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "in_sub"
+[pipelines.output_mapping]
+"out_pub.o_i32" = "safe"
+"out_pub.o_bool" = "guard || either"
+
+[[pipelines]]
+name = "floats"
+expressions = [
+  "let r = sqrt(abs(msg.f64))",
+  "let s = sin(msg.f64) + cos(msg.f64)",
+  "let p = pow(msg.f64, 2.0)",
+  "let lp = low_pass(msg.f64, state.s_f64, 0.5)",
+  "let db = deadband(msg.f64, param.p_f64)",
+  "let cl = clamp(msg.f64, -1.0, param.p_f64)",
+  "let mn = min(msg.f64, param.p_f64)",
+  "let mx = max(msg.f64, param.p_f64)",
+  "let rl = rate_limit(msg.f64, state.s_f64, 2.0, 3.0)",
+  "state.s_f64 = lp",
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "in_sub"
+[pipelines.output_mapping]
+"out_pub.o_f64" = "r + s + p + db + cl + mn + mx + rl + dt_sec() + now_sec()"
+
+[[pipelines]]
+name = "conversions"
+expressions = [
+  "let a = to_int32(msg.f64)",
+  "let b = to_int64(msg.f64)",
+  "let c = to_float32(msg.f64)",
+  "let d = to_float64(msg.f32)",
+  "let e = msg.f32 * msg.f32",
+  "let f = msg.f32 + 1",
+  "let g = to_int32(msg.i64)",
+  "let h = msg.i32 + 0.5",
+  "let i = to_float32(msg.i32)",
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "in_sub"
+[pipelines.output_mapping]
+"out_pub.o_i32" = "a + g"
+"out_pub.o_i64" = "b"
+"out_pub.o_f32" = "c + e + i"
+"out_pub.o_f64" = "d + h + f"
+
+# sinks narrower than the canonical type are range-checked; uint64 above INT64_MAX faults on read
+[[pipelines]]
+name = "narrow_sinks"
+expressions = []
+[pipelines.trigger]
+type = "subscriber"
+source = "in_sub"
+[pipelines.output_mapping]
+"out_pub.o_u8" = "msg.i32"
+"out_pub.o_i8" = "msg.i16"
+"out_pub.o_i16" = "msg.u16"
+"out_pub.o_u16" = "msg.i32"
+"out_pub.o_u32" = "msg.i64"
+"out_pub.o_u64" = "msg.i64"
+
+[[pipelines]]
+name = "big_unsigned"
+expressions = []
+[pipelines.trigger]
+type = "subscriber"
+source = "in_sub"
+[pipelines.output_mapping]
+"out_pub.o_i64" = "msg.u64"
+"out_pub.o_i32" = "msg.u8 + msg.i8 + msg.u16"
+
+[[pipelines]]
+name = "strings_and_bools"
+expressions = [
+  "let same = msg.text == param.p_text",
+  "let n = len(msg.text)",
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "in_sub"
+[pipelines.output_mapping]
+"out_pub.o_text" = "same ? \"same\" : msg.text"
+"out_pub.o_bool" = "(same && msg.flag) || (!param.p_bool && n > 2)"
+"out_pub.o_i32" = "to_int32(n)"
+
+[[pipelines]]
+name = "arrays"
+expressions = [
+  "let first = msg.ints[0]",
+  "let at = msg.floats[msg.i32]",
+  "let n = len(msg.floats) + len(msg.ints)",
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "in_sub"
+[pipelines.output_mapping]
+"out_pub.o_floats" = "msg.floats"
+"out_pub.o_ints" = "msg.ints"
+"out_pub.o_i32" = "first + to_int32(n)"
+"out_pub.o_f64" = "at"
+
+[[pipelines]]
+name = "times"
+expressions = [
+  "let later = msg.stamp + 1.5",
+  "let doubled = msg.dur * 2.0",
+  "let older = msg.stamp < 100.0",
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "in_sub"
+[pipelines.output_mapping]
+"out_pub.o_stamp" = "later"
+"out_pub.o_dur" = "doubled"
+"out_pub.o_bool" = "older"
+"out_pub.o_nested.y" = "msg.nested.x + to_float64(msg.nested.deeper.n)"
+
+[[pipelines]]
+name = "state_machine"
+expressions = [
+  "state.s_i32 = state.s_i32 + 1",
+  "state.s_i64 = to_int64(state.s_i32) * 1000000000",
+  "state.s_text = msg.text",
+  "state.s_bool = !state.s_bool",
+  "state.s_f32 = state.s_f32 + msg.f32",
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "in_sub"
+[pipelines.output_mapping]
+"out_pub.o_i32" = "state.s_i32"
+"out_pub.o_bool" = "state.s_bool"
+"out_pub.o_text" = "state.s_text"
+
+[[pipelines]]
+name = "ticker"
+expressions = ["let t = now_sec() + dt_sec()"]
+[pipelines.trigger]
+type = "timer"
+period_ms = 100
+clock = "steady"
+[pipelines.output_mapping]
+"out_pub.o_f64" = "t + param.p_f64"
+
+[[pipelines]]
+name = "boot"
+expressions = ["let t = param.p_i64 + 1"]
+[pipelines.trigger]
+type = "startup"
+[pipelines.output_mapping]
+"out_pub.o_i64" = "t"
+
+[[pipelines]]
+name = "calc"
+expressions = ["let ok = req.b != 0"]
+[pipelines.trigger]
+type = "service"
+source = "calc_srv"
+[pipelines.output_mapping]
+"res.sum" = "req.a + req.b"
+"res.ratio" = "ok ? to_float64(req.a) / to_float64(req.b) : 0.0"
+"res.ok" = "ok"

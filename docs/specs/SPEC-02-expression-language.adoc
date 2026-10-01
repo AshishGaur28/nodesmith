@@ -20,7 +20,7 @@ One set is used by the manifest (`SPEC-01`), the IR (`SPEC-00`), and the generat
 
 `bool`, `int32`, `int64`, `float32`, `float64`, `string`, `bytes`, and homogeneous arrays `T[]` of any scalar except `bytes`.
 
-Message and service fields are declared in the manifest (`SPEC-01` §7) with ROS primitive types, which map onto the canonical types: `bool` → `bool`; `byte`, `char`, `int8`, `uint8`, `int16`, `uint16`, `int32` → `int32`; `uint32`, `int64`, `uint64` → `int64` (a `uint64` above `INT64_MAX` is a numeric fault on read); `float32`, `float64` as themselves; `string` → `string`; `time` and `duration` → `float64` seconds; `byte[]` and `uint8[]` → `bytes`; every other `T[]` → the canonical `T[]`. Nested messages are addressed by leaf field paths, never as values; fixed and bounded arrays are `T[]`.
+Message and service fields are declared in the manifest (`SPEC-01` §7) with ROS primitive types, which map onto the canonical types: `bool` → `bool`; `byte`, `char`, `int8`, `uint8`, `int16`, `uint16`, `int32` → `int32`; `uint32`, `int64`, `uint64` → `int64` (a `uint64` above `INT64_MAX` is a numeric fault on read); `float32`, `float64` as themselves; `string` → `string`; `time` and `duration` → `float64` seconds, read as `sec + nanosec * 1e-9` evaluated in double precision as written and written back as `sec = floor(seconds)`, `nanosec = round((seconds - floor(seconds)) * 1e9)` carrying into `sec` when it rounds to `1e9`; `byte[]` and `uint8[]` → `bytes`; every other `T[]` → the canonical `T[]`. Nested messages are addressed by leaf field paths, never as values; fixed and bounded arrays are `T[]`.
 
 Writing into a declared field whose ROS type is narrower than its canonical type (`int8`, `uint8`, `int16`, `uint16`, `uint32`, `uint64`) checks the range at run time; an out-of-range value is a numeric fault (§6).
 
@@ -105,19 +105,19 @@ All are pure and allocation-free. `T` is any numeric type; a result is widened p
 [cols="1m,1m,3", options="header"]
 |===
 | Signature | Result | Description
-| `abs(x)` | `T` | Absolute value.
-| `min(a, b)` / `max(a, b)` | common type | Smaller / larger of two numbers.
+| `abs(x)` | `T` | Absolute value. For an integer, `abs(INT_MIN)` wraps to `INT_MIN`.
+| `min(a, b)` / `max(a, b)` | common type | Smaller / larger of two numbers: `min(a, b)` is `b < a ? b : a` and `max(a, b)` is `a < b ? b : a`, so a NaN or equal operands give `a`.
 | `clamp(v, lo, hi)` | common type | `min(max(v, lo), hi)`; `lo > hi` is a numeric fault.
 | `sqrt(x)` / `sin(x)` / `cos(x)` | `float64` | Standard math (radians); `sqrt` of a negative is a numeric fault.
 | `pow(x, y)` | `float64` | `x` to the power `y`.
 | `low_pass(curr, prev, alpha)` | `float64` | `prev + alpha * (curr - prev)`; `alpha` outside `[0,1]` is a numeric fault.
 | `deadband(x, threshold)` | `float64` | `0.0` if `abs(x) < threshold`, else `x`.
-| `rate_limit(target, prev, rise_per_s, fall_per_s)` | `float64` | Moves from `prev` toward `target` by at most `rise_per_s * dt_sec()` upward or `fall_per_s * dt_sec()` downward (`fall_per_s` is a positive magnitude).
-| `len(a)` | `int64` | Array or `bytes`/`string` length.
-| `to_int32(x)` / `to_int64(x)` | int | Explicit numeric conversion; float→int truncates toward zero; out-of-range is a numeric fault.
+| `rate_limit(target, prev, rise_per_s, fall_per_s)` | `float64` | Moves from `prev` toward `target` by at most `rise_per_s * dt_sec()` upward or `fall_per_s * dt_sec()` downward (`fall_per_s` is a positive magnitude): with `d = target - prev`, `up = rise_per_s * dt_sec()` and `down = fall_per_s * dt_sec()`, the result is `prev + up` if `d > up`, `prev - down` if `d < -down`, else `target`.
+| `len(a)` | `int64` | Array or `bytes`/`string` length (a string counts UTF-8 bytes). The argument is not widened: a number is `ERR_SEM_102`.
+| `to_int32(x)` / `to_int64(x)` | int | Explicit numeric conversion (the argument is used as is, never widened first, and must be a number); float→int truncates toward zero; out-of-range is a numeric fault.
 | `to_float32(x)` / `to_float64(x)` | float | Explicit numeric conversion.
 | `now_sec()` | `float64` | Time on the trigger's clock (`steady`/`system`/`ros`; `steady` for non-timer triggers). Evaluated once per execution, so every call in one execution returns the same value.
-| `dt_sec()` | `float64` | Seconds since the previous execution of this pipeline on that clock; `0.0` on the first execution.
+| `dt_sec()` | `float64` | Seconds since the previous execution of this pipeline on that clock, counting an execution that faulted; `0.0` on the first execution.
 |===
 
 The former block-style filters map onto these: a low-pass filter is `low_pass(x, state.prev, param.alpha)` with `state.prev` updated; a deadband is `deadband(...)`; a rate limiter is `rate_limit(...)` with its previous output held in state. Use `let k = 6.283185307179586 * param.cutoff_hz * dt_sec()` and `let alpha = k / (k + 1.0)` for a cutoff-frequency (rather than fixed-alpha) filter.
@@ -127,7 +127,7 @@ Reproducibility: apart from `now_sec()`/`dt_sec()`, evaluation is a pure functio
 == 6. Numeric Semantics & Faults
 
 * Integer `+ - *` wrap in two's complement of the operand width (defined identically on all targets). Integer `/` truncates toward zero; `%` takes the sign of the dividend.
-* Float operations follow IEEE 754 and may produce NaN/Inf internally.
+* Float operations follow IEEE 754 and may produce NaN/Inf internally. A generator MUST NOT fuse a multiplication and an addition into one operation (no fused multiply-add, for example `-ffp-contract=off` in C++), so that `+ - * /` give the same bits on every target. `sin`, `cos` and `pow` come from the platform's math library and are not bit-identical across platforms.
 * A *numeric fault* occurs when: integer division or `%` by zero, `INT_MIN / -1`, array index out of range, a conversion out of range, or any built-in fault listed in §5, or a value out of range for its declared ROS sink type (§2.1), or a NaN/Inf reaching a sink (a `state.` write or a message field).
 * Constant division by zero (both operands literal) is rejected at compile time (`ERR_SEM_109`).
 * On a numeric fault the current execution is aborted: no state is committed, nothing is published, and a fault event is raised (§7 step 6).

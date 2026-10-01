@@ -1,0 +1,26 @@
+cmake_minimum_required(VERSION 3.16)
+project({{ pkg }})
+
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+endif()
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -ffp-contract=off)  # no fused multiply-add: float results must be bit-identical on every target (SPEC-02 §6)
+endif()
+
+find_package(ament_cmake REQUIRED)
+{% for dep in depends %}
+find_package({{ dep }} REQUIRED)
+{% endfor %}
+
+add_executable({{ pkg }} src/main.cpp src/{{ pkg }}_node.cpp)
+target_include_directories({{ pkg }} PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies({{ pkg }}{% for dep in depends %} {{ dep }}{% endfor %})
+
+install(TARGETS {{ pkg }} DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY include/ DESTINATION include)
+
+ament_package()

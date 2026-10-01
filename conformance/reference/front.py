@@ -215,9 +215,10 @@ class Lower:
                 rt = av[0][1]
                 for x in av[1:]: rt = common(rt, x[1])
             else: rt = rule
-            if n in ("abs", "min", "max", "clamp", "sqrt", "sin", "cos", "pow", "low_pass", "deadband", "rate_limit") and any(x[1] not in NUM for x in av): raise Diag("ERR_SEM_102", f"{n} needs numbers")
+            if n in ("abs", "min", "max", "clamp", "sqrt", "sin", "cos", "pow", "low_pass", "deadband", "rate_limit", "to_int32", "to_int64", "to_float32", "to_float64") and any(x[1] not in NUM for x in av): raise Diag("ERR_SEM_102", f"{n} needs numbers")
+            if n == "len" and not (av[0][1] in ("string", "bytes") or av[0][1].endswith("[]")): raise Diag("ERR_SEM_102", "len needs a string, bytes or an array")
             if rule == "common": av = [s.coerce(x, rt) for x in av]
-            elif rule == "float64" and n not in ("now_sec", "dt_sec"): av = [s.coerce(x, "float64") for x in av]
+            elif n in ("sqrt", "sin", "cos", "pow", "low_pass", "deadband", "rate_limit"): av = [s.coerce(x, "float64") for x in av]
             return s.node("call", rt, [x[0] for x in av], {"function": n})
         raise AssertionError(k)
     def stmt(s, st):

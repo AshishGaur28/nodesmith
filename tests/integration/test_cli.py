@@ -49,8 +49,9 @@ def test_missing_file_is_a_generic_error():
     assert main(["validate", "--manifest", "/nonexistent.toml"]) == 1
 
 
-def test_unimplemented_command():
-    assert main(["generate"]) == 1
+@pytest.mark.parametrize("command", ["bench", "clean"])
+def test_unimplemented_command(command):
+    assert main([command]) == 1
 
 
 def test_text_output_lists_every_error_and_one_summary(capsys):

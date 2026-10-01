@@ -176,6 +176,7 @@ Frozen surface: `schemas/node_manifest.schema.json` (revision `1.0.0`, `manifest
 == 8. Known Gaps
 
 * Language coverage: in v1 the extension blocks are C++ only (`ERR_SEM_114` for Python; `zero_copy` with another target is `ERR_SHM_001`). Python extensions are the first work after v1. The reference snippets for lifecycle, security, tracing and simulation exist for C++ only.
+* C++ generator (M3): extension blocks, `zero_copy`, parameter arrays of `int32`/`float32`, `uint64[]`/`int64[]` message fields and fixed-size ROS arrays are not supported yet (the generator refuses them). The generated glue has been compiled and run only against a local stand-in for rclcpp (`tests/support/ros_stub/`); the `jazzy` CI job is the first check against real ROS 2 Jazzy and has not been run.
 * Parameter `validation.regex`: its dialect (ECMAScript in C++, `re` in Python) is unspecified and a default is not checked against it at build time.
 * RMW: v1 generates for `fastrtps` only (`node.rmw`, `SPEC-03` §2.1). Other RMWs are reserved and follow in a later phase; the choice is made at generation time, never at run time.
 * Snippets using ROS or Linux real-time APIs (`SPEC-03`, `05`–`07`, `09`, `10`, `11`) have not been compiled against those SDKs; the "Unverified against a ROS distribution" notes under each snippet list what needs checking against the pinned ROS distribution.

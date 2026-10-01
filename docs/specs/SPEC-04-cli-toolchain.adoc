@@ -70,7 +70,7 @@ nodesmith [GLOBAL_FLAGS] <SUBCOMMAND> [SUBCOMMAND_FLAGS]
 
 | `generate`
 | Synthesizes target source code (`rclcpp`, `rclpy`) from manifest.
-| `--manifest <PATH>`, `--target-language <LANG>`, `--rmw <NAME>`, `--output-dir <PATH>`
+| `--manifest <PATH>`, `--target-language <LANG>`, `--rmw <NAME>`, `--output-dir <PATH>`. The directory is the package root. It is written to a sibling temporary directory and swapped in only after every file was written, so an error never leaves a half-written package, and nothing is written when a gate fails. A feature the selected generator does not implement yet exits with status `1` and a message, without a diagnostic code.
 
 | `bench`
 | Generates benchmark drivers for `telemetry.benchmarks` (`SPEC-09` §5). Builds and runs nothing.
