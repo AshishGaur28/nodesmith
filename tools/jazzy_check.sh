@@ -25,7 +25,7 @@ while [ $# -gt 0 ]; do
     --all|--smoke|--with-tests) ARGS+=("$1"); shift ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     -*) echo "unknown option: $1" >&2; exit 2 ;;
-    *) ARGS+=("$1"); shift ;;
+    *) ARGS+=("$(basename "$1" .toml)"); shift ;;  # accepts `02_filter_pipeline` or `examples/02_filter_pipeline.toml`
   esac
 done
 
