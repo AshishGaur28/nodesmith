@@ -2,153 +2,15 @@
 // IR hash: 746d5e920b285d996bad9eb570c5db8d78e04cd58df8e88bd248b8cc9436dd16
 #include "link_watchdog_node/link_watchdog_node_node.hpp"
 
-#include <chrono>
-#include <limits>
-#include <stdexcept>
-#include <utility>
-
 namespace monitoring {
 
-namespace {
-[[maybe_unused]] double steady_now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
-[[maybe_unused]] double system_now() { return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(); }
-}  // namespace
-
 LinkWatchdogNode::LinkWatchdogNode(const rclcpp::NodeOptions & options)
-: Node("link_watchdog_node", "/monitoring", options), params_(Params{}) {
-  declare_parameters();
-  create_interfaces();
-  gate_.open();  // a non-lifecycle node is active once constructed (SPEC-12 §6)
-  run_boot();  // startup pipelines run once, after the node is operational (SPEC-02 §7)
-}
-
-// Declared once, from the constructor. Both the initial values and every update go through validate().
-void LinkWatchdogNode::declare_parameters() {
-  Params initial;  // effective values include launch-file and command-line overrides
-  rcl_interfaces::msg::ParameterDescriptor d_timeout_s;
-  d_timeout_s.description = "Seconds without a heartbeat before the link is reported down.";
-  d_timeout_s.floating_point_range.resize(1);
-  d_timeout_s.floating_point_range[0].from_value = 0.1;
-  d_timeout_s.floating_point_range[0].to_value = std::numeric_limits<double>::max();
-  d_timeout_s.floating_point_range[0].step = 0.0;
-  initial.timeout_s = declare_parameter<double>("timeout_s", static_cast<double>(2.0), d_timeout_s);
-  if (auto why = validate(initial)) {
-    throw rclcpp::exceptions::InvalidParameterValueException(*why);  // refuse to start
-  }
-  params_.publish([&](Params & slot) { slot = initial; });
-  param_handle_ = add_on_set_parameters_callback(
-    [this](const std::vector<rclcpp::Parameter> & updates) { return on_set_parameters(updates); });
-}
-
-// Runs on the parameter-service thread, concurrently with the pipelines. It never touches state and never blocks a pipeline:
-// it builds a whole new snapshot and swaps it in (SPEC-07 §3.1, SPEC-12 §5).
-rcl_interfaces::msg::SetParametersResult LinkWatchdogNode::on_set_parameters(const std::vector<rclcpp::Parameter> & updates) {
-  auto reject = [this](std::string why) {
-    diag_.report(r2d::Code::ERR_RUN_103, "parameters");
-    rcl_interfaces::msg::SetParametersResult r;
-    r.successful = false;
-    r.reason = std::move(why);
-    return r;
-  };
-  Params next = *params_.acquire();
-  for (const auto & p : updates) {
-    [[maybe_unused]] const std::string & name = p.get_name();
-    if (name == "timeout_s") {
-      next.timeout_s = p.as_double();
-    }
-  }
-  if (auto why = validate(next)) return reject(*why);  // the whole batch is rejected, nothing is published
-  if (!params_.publish([&](Params & slot) { slot = next; })) return reject("parameter store busy, retry");
-  rcl_interfaces::msg::SetParametersResult ok;
-  ok.successful = true;
-  return ok;
-}
-
-// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is picked up with the node
-// (`automatically_add_to_executor_with_node` defaults to true).
-void LinkWatchdogNode::create_interfaces() {
-  group_state_domain_1_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  group_diagnostics_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  pub_age_pub_ = create_publisher<std_msgs::msg::Float64>("/monitoring/heartbeat_age", rclcpp::QoS(10).reliable().durability_volatile());
-  pub_alive_pub_ = create_publisher<std_msgs::msg::Bool>("/monitoring/link_alive", rclcpp::QoS(10).reliable().durability_volatile());
-  timer_check_link_ = rclcpp::create_timer(this, clock_steady_, rclcpp::Duration(std::chrono::milliseconds(200)), [this]() { run_check_link(); }, group_state_domain_1_);
-  {
-    rclcpp::SubscriptionOptions opts;
-    opts.callback_group = group_state_domain_1_;
-    sub_heartbeat_sub_on_heartbeat_ = create_subscription<std_msgs::msg::Empty>("/monitoring/heartbeat", rclcpp::QoS(10).reliable().durability_volatile(),
-      [this](std_msgs::msg::Empty::ConstSharedPtr m) { run_on_heartbeat(*m); }, opts);
-  }
-  diag_pub_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
-  diag_timer_ = rclcpp::create_timer(this, clock_diag_, rclcpp::Duration(std::chrono::seconds(1)), [this]() { drain_diagnostics(); }, group_diagnostics_);
-}
-
-void LinkWatchdogNode::drain_diagnostics() {
-  diagnostic_msgs::msg::DiagnosticArray array;
-  diag_.drain([&](r2d::Code code, const char * who) {
-    diagnostic_msgs::msg::DiagnosticStatus status;
-    status.level = code == r2d::Code::ERR_RUN_101 ? diagnostic_msgs::msg::DiagnosticStatus::ERROR : diagnostic_msgs::msg::DiagnosticStatus::WARN;
-    status.name = get_fully_qualified_name();
-    status.message = r2d::code_message(code);
-    diagnostic_msgs::msg::KeyValue c, p;
-    c.key = "code"; c.value = r2d::code_name(code);
-    p.key = "pipeline"; p.value = who ? who : "";
-    status.values = {c, p};
-    array.status.push_back(status);
-  });
-  if (!array.status.empty()) {
-    array.header.stamp = now();
-    diag_pub_->publish(array);
-  }
-}
-
-void LinkWatchdogNode::run_boot() {
-  r2d::RunGate::Scope run(gate_);
-  if (!run) { return; }
-  const auto params = params_.acquire();  // one snapshot for the whole execution (SPEC-12 §5)
-  const double now_sec = steady_now();
-  BootResult r;
-  if (!eval_boot(*params, state_, now_sec, 0.0, r)) {
-    diag_.report(r2d::Code::ERR_RUN_101, "boot");  // preallocated ring: no allocation, no logging here
-    return;
-  }
-  state_.last_seen = r.next_last_seen;  // step 5: commit
-}
-
-void LinkWatchdogNode::run_check_link() {
-  if (busy_check_link_.exchange(true)) { diag_.report(r2d::Code::ERR_RUN_102, "check_link"); return; }
-  struct BusyGuard { std::atomic<bool> & b; ~BusyGuard() { b.store(false); } } busy_guard{busy_check_link_};
-  r2d::RunGate::Scope run(gate_);
-  if (!run) { return; }
-  const auto params = params_.acquire();  // one snapshot for the whole execution (SPEC-12 §5)
-  const double now_sec = steady_now();
-  CheckLinkResult r;
-  if (!eval_check_link(*params, state_, now_sec, 0.0, r)) {
-    diag_.report(r2d::Code::ERR_RUN_101, "check_link");  // preallocated ring: no allocation, no logging here
-    return;
-  }
-  {
-    std_msgs::msg::Float64 out{};  // value-initialised
-    out.data = r.out__age_pub__data;
-    pub_age_pub_->publish(out);
-  }
-  {
-    std_msgs::msg::Bool out{};  // value-initialised
-    out.data = r.out__alive_pub__data;
-    pub_alive_pub_->publish(out);
-  }
-}
-
-void LinkWatchdogNode::run_on_heartbeat(const std_msgs::msg::Empty & in) {
-  r2d::RunGate::Scope run(gate_);
-  if (!run) { return; }
-  const auto params = params_.acquire();  // one snapshot for the whole execution (SPEC-12 §5)
-  const double now_sec = steady_now();
-  OnHeartbeatResult r;
-  if (!eval_on_heartbeat(in, *params, state_, now_sec, 0.0, r)) {
-    diag_.report(r2d::Code::ERR_RUN_101, "on_heartbeat");  // preallocated ring: no allocation, no logging here
-    return;
-  }
-  state_.last_seen = r.next_last_seen;  // step 5: commit
+: Node(names::kNodeName, names::kNodeNamespace, options),
+  parameters_(*this, engine_),
+  interfaces_(*this, engine_),
+  diagnostics_(*this, engine_) {
+  engine_.open();  // a non-lifecycle node is active once constructed (SPEC-12 §6)
+  interfaces_.start();  // startup pipelines run once, after the node is operational (SPEC-02 §7)
 }
 
 }  // namespace monitoring

@@ -17,7 +17,8 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 
-add_executable(gain_node src/main.cpp src/gain_node_node.cpp)
+set(NODE_SOURCES src/main.cpp src/app.cpp src/gain_node_node.cpp src/interfaces.cpp src/parameters.cpp src/diagnostics.cpp)
+add_executable(gain_node ${NODE_SOURCES})
 target_include_directories(gain_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)

@@ -2,134 +2,15 @@
 // IR hash: cf473c6f24952073b0ad5f7ea6769da29b35ab9137f76e035719b2da74a0dfe8
 #include "counter_node/counter_node_node.hpp"
 
-#include <chrono>
-#include <limits>
-#include <stdexcept>
-#include <utility>
-
 namespace demo {
 
-namespace {
-[[maybe_unused]] double steady_now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
-[[maybe_unused]] double system_now() { return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(); }
-}  // namespace
-
 CounterNode::CounterNode(const rclcpp::NodeOptions & options)
-: Node("counter_node", "/demo", options), params_(Params{}) {
-  declare_parameters();
-  create_interfaces();
-  gate_.open();  // a non-lifecycle node is active once constructed (SPEC-12 §6)
-}
-
-// Declared once, from the constructor. Both the initial values and every update go through validate().
-void CounterNode::declare_parameters() {
-  Params initial;  // effective values include launch-file and command-line overrides
-  rcl_interfaces::msg::ParameterDescriptor d_limit;
-  initial.limit = declare_parameter<std::int64_t>("limit", static_cast<std::int64_t>(std::int64_t{INT64_C(10)}), d_limit);
-  rcl_interfaces::msg::ParameterDescriptor d_step;
-  d_step.integer_range.resize(1);
-  d_step.integer_range[0].from_value = 1;
-  d_step.integer_range[0].to_value = std::numeric_limits<std::int64_t>::max();
-  d_step.integer_range[0].step = 0;
-  initial.step = declare_parameter<std::int64_t>("step", static_cast<std::int64_t>(std::int64_t{INT64_C(1)}), d_step);
-  if (auto why = validate(initial)) {
-    throw rclcpp::exceptions::InvalidParameterValueException(*why);  // refuse to start
-  }
-  params_.publish([&](Params & slot) { slot = initial; });
-  param_handle_ = add_on_set_parameters_callback(
-    [this](const std::vector<rclcpp::Parameter> & updates) { return on_set_parameters(updates); });
-}
-
-// Runs on the parameter-service thread, concurrently with the pipelines. It never touches state and never blocks a pipeline:
-// it builds a whole new snapshot and swaps it in (SPEC-07 §3.1, SPEC-12 §5).
-rcl_interfaces::msg::SetParametersResult CounterNode::on_set_parameters(const std::vector<rclcpp::Parameter> & updates) {
-  auto reject = [this](std::string why) {
-    diag_.report(r2d::Code::ERR_RUN_103, "parameters");
-    rcl_interfaces::msg::SetParametersResult r;
-    r.successful = false;
-    r.reason = std::move(why);
-    return r;
-  };
-  Params next = *params_.acquire();
-  for (const auto & p : updates) {
-    [[maybe_unused]] const std::string & name = p.get_name();
-    if (name == "limit") {
-      next.limit = p.as_int();
-    } else if (name == "step") {
-      next.step = p.as_int();
-    }
-  }
-  if (auto why = validate(next)) return reject(*why);  // the whole batch is rejected, nothing is published
-  if (!params_.publish([&](Params & slot) { slot = next; })) return reject("parameter store busy, retry");
-  rcl_interfaces::msg::SetParametersResult ok;
-  ok.successful = true;
-  return ok;
-}
-
-// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is picked up with the node
-// (`automatically_add_to_executor_with_node` defaults to true).
-void CounterNode::create_interfaces() {
-  group_state_domain_1_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  group_diagnostics_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  pub_count_pub_ = create_publisher<std_msgs::msg::Int64>("/demo/count", rclcpp::QoS(10).reliable().durability_volatile());
-  srv_reset_srv_ = create_service<std_srvs::srv::Trigger>("/demo/reset", [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> req, std::shared_ptr<std_srvs::srv::Trigger::Response> res) { run_reset(*req, *res); }, rclcpp::ServicesQoS(), group_state_domain_1_);
-  timer_tick_ = rclcpp::create_timer(this, get_clock(), rclcpp::Duration(std::chrono::milliseconds(500)), [this]() { run_tick(); }, group_state_domain_1_);
-  diag_pub_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
-  diag_timer_ = rclcpp::create_timer(this, clock_diag_, rclcpp::Duration(std::chrono::seconds(1)), [this]() { drain_diagnostics(); }, group_diagnostics_);
-}
-
-void CounterNode::drain_diagnostics() {
-  diagnostic_msgs::msg::DiagnosticArray array;
-  diag_.drain([&](r2d::Code code, const char * who) {
-    diagnostic_msgs::msg::DiagnosticStatus status;
-    status.level = code == r2d::Code::ERR_RUN_101 ? diagnostic_msgs::msg::DiagnosticStatus::ERROR : diagnostic_msgs::msg::DiagnosticStatus::WARN;
-    status.name = get_fully_qualified_name();
-    status.message = r2d::code_message(code);
-    diagnostic_msgs::msg::KeyValue c, p;
-    c.key = "code"; c.value = r2d::code_name(code);
-    p.key = "pipeline"; p.value = who ? who : "";
-    status.values = {c, p};
-    array.status.push_back(status);
-  });
-  if (!array.status.empty()) {
-    array.header.stamp = now();
-    diag_pub_->publish(array);
-  }
-}
-
-void CounterNode::run_reset(const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res) {
-  r2d::RunGate::Scope run(gate_);
-  if (!run) { res = std_srvs::srv::Trigger::Response(); return; }
-  const auto params = params_.acquire();  // one snapshot for the whole execution (SPEC-12 §5)
-  ResetResult r;
-  if (!eval_reset(in, *params, state_, 0.0, 0.0, r)) {
-    diag_.report(r2d::Code::ERR_RUN_101, "reset");  // preallocated ring: no allocation, no logging here
-    res = std_srvs::srv::Trigger::Response();  // a fault returns the default response (SPEC-02 §7 step 6)
-    return;
-  }
-  state_.count = r.next_count;  // step 5: commit
-  res = std_srvs::srv::Trigger::Response();
-  res.message = r.out__res__message;
-  res.success = r.out__res__success;
-}
-
-void CounterNode::run_tick() {
-  if (busy_tick_.exchange(true)) { diag_.report(r2d::Code::ERR_RUN_102, "tick"); return; }
-  struct BusyGuard { std::atomic<bool> & b; ~BusyGuard() { b.store(false); } } busy_guard{busy_tick_};
-  r2d::RunGate::Scope run(gate_);
-  if (!run) { return; }
-  const auto params = params_.acquire();  // one snapshot for the whole execution (SPEC-12 §5)
-  TickResult r;
-  if (!eval_tick(*params, state_, 0.0, 0.0, r)) {
-    diag_.report(r2d::Code::ERR_RUN_101, "tick");  // preallocated ring: no allocation, no logging here
-    return;
-  }
-  state_.count = r.next_count;  // step 5: commit
-  {
-    std_msgs::msg::Int64 out{};  // value-initialised
-    out.data = static_cast<std::int64_t>(r.out__count_pub__data);
-    pub_count_pub_->publish(out);
-  }
+: Node(names::kNodeName, names::kNodeNamespace, options),
+  parameters_(*this, engine_),
+  interfaces_(*this, engine_),
+  diagnostics_(*this, engine_) {
+  engine_.open();  // a non-lifecycle node is active once constructed (SPEC-12 §6)
+  interfaces_.start();  // startup pipelines run once, after the node is operational (SPEC-02 §7)
 }
 
 }  // namespace demo

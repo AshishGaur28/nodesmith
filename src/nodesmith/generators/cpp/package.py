@@ -10,12 +10,14 @@ import shutil
 from pathlib import Path
 
 from ...ir.canonical import ir_hash
+from . import names
 from .dag import DagEmitter, PipelineInfo
+from .engine import engine_members, engine_methods
 from .errors import Unsupported
+from .interfaces import InterfacesBuilder
 from .literals import value_literal
 from .logic import has_user_logic, logic_api_header, logic_defaults_source
 from .naming import camel, cpp_type, cxx_namespace, member, message_header, split_type
-from .node import NodeBuilder
 from .parameters import (
     check_parameter_types,
     constraint_functions,
@@ -103,59 +105,97 @@ def _message_packages(ir: dict) -> tuple[list[str], list[str]]:
     return depends, sorted({message_header(t) for t in types})
 
 
-def _node_files(ir: dict, pipelines: list[PipelineInfo], result_types: dict, hash_: str) -> dict:
-    """The files of the ROS node: header, source, ``main.cpp`` and the build files."""
+def _node_files(ir: dict, pipelines: list[PipelineInfo], hash_: str) -> dict:
+    """The files of the ROS side: the node, the interfaces, parameters and diagnostics adapters,
+    the application with ``main.cpp``, and the build, parameter and launch files."""
     env = environment()
-    meta, threads = ir["node_meta"], ir["concurrency"]["threads"]
+    meta = ir["node_meta"]
     package_name, class_name = meta["name"], camel(meta["name"])
-    namespace = cxx_namespace(meta["namespace"])
     depends, headers = _message_packages(ir)
-    node = NodeBuilder(ir, pipelines).build()
+    interfaces = InterfacesBuilder(ir, pipelines).build()
+    has_params = bool(ir["parameters"])
     shared = {
         "ir_hash": hash_,
         "pkg": package_name,
-        "ns": namespace,
+        "ns": cxx_namespace(meta["namespace"]),
         "cls": class_name,
-        "has_user_logic": has_user_logic(ir),
     }
-    ring_size = threads + 2  # SPEC-12 section 5: one slot per thread, the current one, a free one
+
+    def render(template: str, **context) -> str:
+        return env.get_template(template).render(**shared, **context)
+
     files = {
-        f"include/{package_name}/{package_name}_node.hpp": env.get_template("node.hpp.j2").render(
-            **shared,
-            headers=headers,
-            n_ring=ring_size,
-            threads=threads,
-            members=node.members,
-            methods=node.methods,
+        f"include/{package_name}/{package_name}_node.hpp": render(
+            "node.hpp.j2", has_user_logic=has_user_logic(ir)
         ),
-        f"src/{package_name}_node.cpp": env.get_template("node.cpp.j2").render(
-            **shared,
-            node_name=package_name,
-            ros_namespace=meta["namespace"],
-            n_ring=ring_size,
-            creates=node.creates,
-            startups=[p.name for p in pipelines if p.trigger["kind"] == "startup"],
+        f"src/{package_name}_node.cpp": render("node.cpp.j2", has_user_logic=has_user_logic(ir)),
+        f"include/{package_name}/interfaces.hpp": render(
+            "interfaces.hpp.j2",
+            headers=headers,
+            methods=interfaces.methods,
+            members=interfaces.members,
+        ),
+        "src/interfaces.cpp": render(
+            "interfaces.cpp.j2",
+            creates=interfaces.creates,
+            startups=interfaces.startups,
+            run_methods=interfaces.run_methods(class_name + "Interfaces"),
+        ),
+        f"include/{package_name}/parameters.hpp": render("parameters.hpp.j2"),
+        "src/parameters.cpp": render(
+            "parameters.cpp.j2",
             declare=declaration_lines(ir["parameters"]),
             update=update_lines(ir["parameters"]),
-            run_methods=node.run_methods(class_name, result_types),
-            has_params=bool(ir["parameters"]),
         ),
-        "CMakeLists.txt": env.get_template("CMakeLists.txt.j2").render(
-            pkg=package_name,
+        f"include/{package_name}/diagnostics.hpp": render("diagnostics.hpp.j2"),
+        "src/diagnostics.cpp": render("diagnostics.cpp.j2"),
+        f"include/{package_name}/app.hpp": render("app.hpp.j2"),
+        "src/app.cpp": render("app.cpp.j2", executor=ir["concurrency"]["executor"]),
+        "src/main.cpp": render("main.cpp.j2"),
+        "CMakeLists.txt": render(
+            "CMakeLists.txt.j2",
             depends=depends,
-            has_user_logic=shared["has_user_logic"],
-            has_params=bool(ir["parameters"]),
+            has_user_logic=has_user_logic(ir),
+            has_params=has_params,
         ),
-        f"launch/{package_name}.launch.py": env.get_template("launch.py.j2").render(
-            ir_hash=hash_, pkg=package_name, has_params=bool(ir["parameters"])
-        ),
-        "src/main.cpp": env.get_template("main.cpp.j2").render(
-            **shared, executor=ir["concurrency"]["executor"], threads=threads
-        ),
+        f"launch/{package_name}.launch.py": render("launch.py.j2", has_params=has_params),
     }
-    if ir["parameters"]:
+    if has_params:
         files[f"config/{package_name}.params.yaml"] = params_yaml(ir)
     return files
+
+
+def _core_files(
+    ir: dict, pipelines: list[PipelineInfo], result_types: dict, hash_: str
+) -> dict[str, str]:
+    """The files that need no ROS: the names, the pipelines, the engine and the runtime library."""
+    meta = ir["node_meta"]
+    package_name = meta["name"]
+    threads = ir["concurrency"]["threads"]
+    context = {
+        "ir_hash": hash_,
+        "pkg": package_name,
+        "ns": cxx_namespace(meta["namespace"]),
+        "cls": camel(package_name),
+    }
+    env = environment()
+    return {
+        f"include/{package_name}/interface_names.hpp": env.get_template(
+            "interface_names.hpp.j2"
+        ).render(**context, constants=names.constants(ir)),
+        f"include/{package_name}/pipelines.hpp": _pipelines_header(
+            ir, pipelines, result_types, hash_
+        ),
+        f"include/{package_name}/engine.hpp": env.get_template("engine.hpp.j2").render(
+            **context,
+            methods=engine_methods(pipelines, result_types),
+            members=engine_members(pipelines),
+            n_ring=threads
+            + 2,  # SPEC-12 section 5: one slot per thread, the current one, a free one
+            threads=threads,
+        ),
+        f"include/{package_name}/runtime.hpp": runtime_header(),
+    }
 
 
 def generate_package(
@@ -169,8 +209,8 @@ def generate_package(
     ``logic_files`` are the user's source files (``{path relative to logic/: text}``); they are
     copied into the package under ``logic/`` and built with it (see ``logic.py``).
 
-    With ``core_only`` only the ROS-free part is produced (``pipelines.hpp`` and ``runtime.hpp``)
-    and the checks that concern the ROS node are skipped; the tests compile it without ROS."""
+    With ``core_only`` only the ROS-free part is produced (``interface_names.hpp``,
+    ``pipelines.hpp``, ``engine.hpp``, ``runtime.hpp`` and ``logic_api.hpp``) and the checks that concern the ROS node are skipped; the tests compile it without ROS."""
     if not core_only:
         _check_supported(ir)
     meta = ir["node_meta"]
@@ -178,19 +218,14 @@ def generate_package(
     pipelines = [DagEmitter(ir, dag).build() for dag in ir["execution_dags"]]
     result_types = {p.name: camel(p.name) + "Result" for p in pipelines}
 
-    files = {
-        f"include/{package_name}/pipelines.hpp": _pipelines_header(
-            ir, pipelines, result_types, hash_
-        )
-    }
-    files[f"include/{package_name}/runtime.hpp"] = runtime_header()
+    files = _core_files(ir, pipelines, result_types, hash_)
     if has_user_logic(ir):
         files[f"include/{package_name}/logic_api.hpp"] = logic_api_header(ir)
         files.update({f"logic/{path}": text for path, text in (logic_files or {}).items()})
     if not core_only:
         if has_user_logic(ir):
             files["src/logic_defaults.cpp"] = logic_defaults_source(ir)
-        files.update(_node_files(ir, pipelines, result_types, hash_))
+        files.update(_node_files(ir, pipelines, hash_))
         files["package.xml"] = (
             environment()
             .get_template("package.xml.j2")

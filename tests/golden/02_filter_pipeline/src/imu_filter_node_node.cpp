@@ -2,132 +2,15 @@
 // IR hash: 4cf0ab3bfb960372eb610d726663d31cc3398467f9943166b1a439e3df7b809d
 #include "imu_filter_node/imu_filter_node_node.hpp"
 
-#include <chrono>
-#include <limits>
-#include <stdexcept>
-#include <utility>
-
 namespace sensors::chassis {
 
-namespace {
-[[maybe_unused]] double steady_now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
-[[maybe_unused]] double system_now() { return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(); }
-}  // namespace
-
 ImuFilterNode::ImuFilterNode(const rclcpp::NodeOptions & options)
-: Node("imu_filter_node", "/sensors/chassis", options), params_(Params{}) {
-  declare_parameters();
-  create_interfaces();
-  gate_.open();  // a non-lifecycle node is active once constructed (SPEC-12 §6)
-}
-
-// Declared once, from the constructor. Both the initial values and every update go through validate().
-void ImuFilterNode::declare_parameters() {
-  Params initial;  // effective values include launch-file and command-line overrides
-  rcl_interfaces::msg::ParameterDescriptor d_alpha;
-  d_alpha.description = "Low-pass smoothing factor.";
-  d_alpha.floating_point_range.resize(1);
-  d_alpha.floating_point_range[0].from_value = 0.0;
-  d_alpha.floating_point_range[0].to_value = 1.0;
-  d_alpha.floating_point_range[0].step = 0.0;
-  initial.alpha = declare_parameter<double>("alpha", static_cast<double>(0.85), d_alpha);
-  rcl_interfaces::msg::ParameterDescriptor d_max_accel;
-  d_max_accel.floating_point_range.resize(1);
-  d_max_accel.floating_point_range[0].from_value = 0.0;
-  d_max_accel.floating_point_range[0].to_value = std::numeric_limits<double>::max();
-  d_max_accel.floating_point_range[0].step = 0.0;
-  initial.max_accel = declare_parameter<double>("max_accel", static_cast<double>(20.0), d_max_accel);
-  if (auto why = validate(initial)) {
-    throw rclcpp::exceptions::InvalidParameterValueException(*why);  // refuse to start
-  }
-  params_.publish([&](Params & slot) { slot = initial; });
-  param_handle_ = add_on_set_parameters_callback(
-    [this](const std::vector<rclcpp::Parameter> & updates) { return on_set_parameters(updates); });
-}
-
-// Runs on the parameter-service thread, concurrently with the pipelines. It never touches state and never blocks a pipeline:
-// it builds a whole new snapshot and swaps it in (SPEC-07 §3.1, SPEC-12 §5).
-rcl_interfaces::msg::SetParametersResult ImuFilterNode::on_set_parameters(const std::vector<rclcpp::Parameter> & updates) {
-  auto reject = [this](std::string why) {
-    diag_.report(r2d::Code::ERR_RUN_103, "parameters");
-    rcl_interfaces::msg::SetParametersResult r;
-    r.successful = false;
-    r.reason = std::move(why);
-    return r;
-  };
-  Params next = *params_.acquire();
-  for (const auto & p : updates) {
-    [[maybe_unused]] const std::string & name = p.get_name();
-    if (name == "alpha") {
-      next.alpha = p.as_double();
-    } else if (name == "max_accel") {
-      next.max_accel = p.as_double();
-    }
-  }
-  if (auto why = validate(next)) return reject(*why);  // the whole batch is rejected, nothing is published
-  if (!params_.publish([&](Params & slot) { slot = next; })) return reject("parameter store busy, retry");
-  rcl_interfaces::msg::SetParametersResult ok;
-  ok.successful = true;
-  return ok;
-}
-
-// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is picked up with the node
-// (`automatically_add_to_executor_with_node` defaults to true).
-void ImuFilterNode::create_interfaces() {
-  group_state_domain_1_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  group_diagnostics_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  pub_filtered_imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("/sensor/imu/filtered", rclcpp::QoS(10).reliable().durability_volatile());
-  pub_status_pub_ = create_publisher<std_msgs::msg::String>("/sensor/imu/status", rclcpp::QoS(10).reliable().durability_volatile());
-  {
-    rclcpp::SubscriptionOptions opts;
-    opts.callback_group = group_state_domain_1_;
-    sub_raw_imu_sub_filter_imu_ = create_subscription<sensor_msgs::msg::Imu>("/sensor/imu/raw", rclcpp::QoS(5).best_effort().durability_volatile(),
-      [this](sensor_msgs::msg::Imu::ConstSharedPtr m) { run_filter_imu(*m); }, opts);
-  }
-  diag_pub_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", rclcpp::QoS(10));
-  diag_timer_ = rclcpp::create_timer(this, clock_diag_, rclcpp::Duration(std::chrono::seconds(1)), [this]() { drain_diagnostics(); }, group_diagnostics_);
-}
-
-void ImuFilterNode::drain_diagnostics() {
-  diagnostic_msgs::msg::DiagnosticArray array;
-  diag_.drain([&](r2d::Code code, const char * who) {
-    diagnostic_msgs::msg::DiagnosticStatus status;
-    status.level = code == r2d::Code::ERR_RUN_101 ? diagnostic_msgs::msg::DiagnosticStatus::ERROR : diagnostic_msgs::msg::DiagnosticStatus::WARN;
-    status.name = get_fully_qualified_name();
-    status.message = r2d::code_message(code);
-    diagnostic_msgs::msg::KeyValue c, p;
-    c.key = "code"; c.value = r2d::code_name(code);
-    p.key = "pipeline"; p.value = who ? who : "";
-    status.values = {c, p};
-    array.status.push_back(status);
-  });
-  if (!array.status.empty()) {
-    array.header.stamp = now();
-    diag_pub_->publish(array);
-  }
-}
-
-void ImuFilterNode::run_filter_imu(const sensor_msgs::msg::Imu & in) {
-  r2d::RunGate::Scope run(gate_);
-  if (!run) { return; }
-  const auto params = params_.acquire();  // one snapshot for the whole execution (SPEC-12 §5)
-  FilterImuResult r;
-  if (!eval_filter_imu(in, *params, state_, 0.0, 0.0, r)) {
-    diag_.report(r2d::Code::ERR_RUN_101, "filter_imu");  // preallocated ring: no allocation, no logging here
-    return;
-  }
-  state_.prev_z = r.next_prev_z;  // step 5: commit
-  {
-    sensor_msgs::msg::Imu out{};  // value-initialised
-    out.header.frame_id = r.out__filtered_imu_pub__header__frame_id;
-    out.linear_acceleration.z = r.out__filtered_imu_pub__linear_acceleration__z;
-    pub_filtered_imu_pub_->publish(out);
-  }
-  {
-    std_msgs::msg::String out{};  // value-initialised
-    out.data = r.out__status_pub__data;
-    pub_status_pub_->publish(out);
-  }
+: Node(names::kNodeName, names::kNodeNamespace, options),
+  parameters_(*this, engine_),
+  interfaces_(*this, engine_),
+  diagnostics_(*this, engine_) {
+  engine_.open();  // a non-lifecycle node is active once constructed (SPEC-12 §6)
+  interfaces_.start();  // startup pipelines run once, after the node is operational (SPEC-02 §7)
 }
 
 }  // namespace sensors::chassis

@@ -15,10 +15,11 @@ find_package(rcl_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 
+set(NODE_SOURCES src/main.cpp src/app.cpp src/speed_planner_node_node.cpp src/interfaces.cpp src/parameters.cpp src/diagnostics.cpp)
 # The functions the manifest declares are written by the user: logic/ is a copy of their folder (see include/speed_planner_node/logic_api.hpp),
 # and src/logic_defaults.cpp holds weak placeholders for whatever they have not written.
 file(GLOB_RECURSE USER_LOGIC CONFIGURE_DEPENDS logic/*.cpp logic/*.cc logic/*.cxx)
-add_executable(speed_planner_node src/main.cpp src/speed_planner_node_node.cpp src/logic_defaults.cpp ${USER_LOGIC})
+add_executable(speed_planner_node ${NODE_SOURCES} src/logic_defaults.cpp ${USER_LOGIC})
 target_include_directories(speed_planner_node PRIVATE logic)
 target_include_directories(speed_planner_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

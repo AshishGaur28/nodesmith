@@ -146,11 +146,17 @@ TimerBase::SharedPtr create_timer(NodeT node, Clock::SharedPtr, Duration period,
 
 inline void init(int, char **) {}
 inline void shutdown() {}
-namespace executors {
-struct SingleThreadedExecutor { template <class N> void add_node(N) {} void spin() {} };
+class Executor {
+ public:
+  virtual ~Executor() = default;
+  void add_node(std::shared_ptr<Node>) {}
+  virtual void spin() = 0;
+};
 struct ExecutorOptions {};
+namespace executors {
+using ExecutorOptions = rclcpp::ExecutorOptions;
+struct SingleThreadedExecutor : Executor { void spin() override {} };
+struct MultiThreadedExecutor : Executor { MultiThreadedExecutor(ExecutorOptions, std::size_t) {} void spin() override {} };
 }  // namespace executors
-using ExecutorOptions = executors::ExecutorOptions;
-namespace executors { struct MultiThreadedExecutor { MultiThreadedExecutor(ExecutorOptions, std::size_t) {} template <class N> void add_node(N) {} void spin() {} }; }
 
 }  // namespace rclcpp

@@ -93,7 +93,11 @@ def run_driver(ir, driver_source, extra_flags=(), logic_source=""):
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
             (root / rel).write_text(text)
         (root / "driver.cpp").write_text(driver_source)
-        sources = [root / f"src/{pkg}_node.cpp", root / "driver.cpp"]
+        sources = [
+            root / f"src/{name}.cpp"
+            for name in (f"{pkg}_node", "interfaces", "parameters", "diagnostics")
+        ]
+        sources.append(root / "driver.cpp")
         if ir.get("functions"):
             sources.append(root / "src/logic_defaults.cpp")
             if logic_source:
@@ -124,7 +128,7 @@ def run_driver(ir, driver_source, extra_flags=(), logic_source=""):
             return build.returncode, "compile failed:\n" + build.stderr[:4000]
         run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60)
         # The program that runs the node and the starter file must compile too.
-        runners = [root / "src/main.cpp"]
+        runners = [root / "src/main.cpp", root / "src/app.cpp"]
         if ir.get("functions"):
             runners.append(root / "logic/logic.cpp")
         for runner in runners:

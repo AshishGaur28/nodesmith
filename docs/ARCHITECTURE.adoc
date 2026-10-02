@@ -68,15 +68,19 @@ manifest file → ingest → schema → rules → semantic checks + lowering →
 | Module | Job
 | dag.py | One pipeline to the body of a C++ function (`eval_<pipeline>`), ROS-free.
 | parameters.py | `validate()`, parameter declaration and the update loop.
-| node.py | The ROS node: members, interface creation, the `run_<pipeline>` methods.
+| names.py | The constants of `interface_names.hpp` and the way the other emitters spell them.
+| engine.py | The ROS-free engine: the `run_<pipeline>` methods (evaluate, commit, return the outputs).
+| interfaces.py | The ROS adapter: publishers, subscriptions, services, timers, and the handlers that call the engine and publish.
 | package.py | Assembles every file of the node package from the templates; writes it atomically.
 | logic.py | The user's functions: `logic_api.hpp`, the weak placeholders, the starter `logic.cpp` and reading the user's `logic/` folder.
 | naming.py, literals.py | Names, type mappings and C++ literals.
 | templates.py | Where the templates are, and the shared `runtime.hpp`.
 |===
 
-The generated code is split on purpose: `pipelines.hpp` and `runtime.hpp` need no ROS, so their
-behaviour is tested on any machine with a C++ compiler. Only the node glue needs ROS.
+The generated code is split on purpose: the engine (`engine.hpp`), `pipelines.hpp`, `interface_names.hpp`
+and `runtime.hpp` need no ROS, so their behaviour is tested on any machine with a C++ compiler. Only the
+adapters (interfaces, parameters, diagnostics), the node and the application need ROS; see `SPEC-03` §4.1
+for the classes and their responsibilities.
 
 == Tests
 
@@ -86,6 +90,7 @@ behaviour is tested on any machine with a C++ compiler. Only the node glue needs
 | tests/unit/ | Small pieces: the parser, the evaluator, Python 3.11 compatibility of the source.
 | tests/integration/test_conformance.py | The front end gives the expected IR and errors for every conformance case.
 | tests/integration/test_cpp_semantics.py | Generated pipelines compute what the spec says, on random inputs, against a reference interpreter.
+| tests/integration/test_engine.py | The engine runs pipelines, guards parameters and collects diagnostics, with no ROS at all.
 | tests/integration/test_cpp_node.py | The generated node behaves correctly against a local stand-in for rclcpp.
 | tests/integration/test_generate.py, tests/golden/ | The generated files equal the checked-in ones, byte for byte.
 | tests/jazzy/, tools/jazzy_check.sh | The generated nodes on real ROS 2 Jazzy (CI, or locally in Docker).

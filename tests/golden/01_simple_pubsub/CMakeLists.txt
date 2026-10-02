@@ -15,7 +15,8 @@ find_package(rcl_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 
-add_executable(echo_node src/main.cpp src/echo_node_node.cpp)
+set(NODE_SOURCES src/main.cpp src/app.cpp src/echo_node_node.cpp src/interfaces.cpp src/parameters.cpp src/diagnostics.cpp)
+add_executable(echo_node ${NODE_SOURCES})
 target_include_directories(echo_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)

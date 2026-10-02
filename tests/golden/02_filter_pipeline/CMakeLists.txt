@@ -16,7 +16,8 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
-add_executable(imu_filter_node src/main.cpp src/imu_filter_node_node.cpp)
+set(NODE_SOURCES src/main.cpp src/app.cpp src/imu_filter_node_node.cpp src/interfaces.cpp src/parameters.cpp src/diagnostics.cpp)
+add_executable(imu_filter_node ${NODE_SOURCES})
 target_include_directories(imu_filter_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)

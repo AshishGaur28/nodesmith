@@ -11,6 +11,7 @@ Three pieces are generated from the IR's parameters:
 import json
 import math
 
+from . import names
 from .dag import DagEmitter
 from .errors import Unsupported
 from .literals import cpp_string, literal, value_literal
@@ -192,8 +193,8 @@ def _descriptor_lines(parameter: dict, descriptor: str) -> list[str]:
 
 
 def declaration_lines(parameters: list[dict]) -> list[str]:
-    """The body of ``declare_parameters()``: one descriptor and one declaration per parameter,
-    collected into ``Params initial``."""
+    """The body of the parameters adapter's constructor up to the declarations: one descriptor and
+    one declaration per parameter, collected into ``Params initial`` (``node`` is the ROS node)."""
     lines = ["Params initial;  // effective values include launch-file and command-line overrides"]
     for parameter in parameters:
         name, type_ = parameter["name"], parameter["canonical_type"]
@@ -205,7 +206,9 @@ def declaration_lines(parameters: list[dict]) -> list[str]:
             initial = f"{ros_type}({default})"
         else:
             initial = f"static_cast<{ros_type}>({default})"
-        declared = f"declare_parameter<{ros_type}>({cpp_string(name)}, {initial}, {descriptor})"
+        declared = (
+            f"node.declare_parameter<{ros_type}>({names.parameter(name)}, {initial}, {descriptor})"
+        )
         lines += _store_declared(target, type_, declared, name)
     return lines
 
@@ -228,7 +231,7 @@ def _store_declared(target: str, type_: str, declared: str, name: str) -> list[s
 
 # ------------------------------------------------------------------------------ update
 def update_lines(parameters: list[dict]) -> list[str]:
-    """The loop of ``on_set_parameters()`` that copies each updated value into ``next``
+    """The loop of the parameters adapter's ``on_set`` that copies each updated value into ``next``
     (``reject`` is a lambda defined in the template)."""
     lines = [
         "for (const auto & p : updates) {",
@@ -241,7 +244,7 @@ def update_lines(parameters: list[dict]) -> list[str]:
             member(parameter["name"]),
         )
         keyword = "if" if position == 0 else "} else if"
-        lines.append(f"  {keyword} (name == {cpp_string(name)}) {{")
+        lines.append(f"  {keyword} (name == {names.parameter(name)}) {{")
         if parameter.get("read_only"):
             why = cpp_string(f"{name!r} is read-only and cannot be updated at runtime")
             lines.append(f"    return reject({why});")

@@ -118,18 +118,39 @@ Generated C++ packages adhere strictly to `ament_cmake` standards:
 │   └── <node_name>.launch.py    # starts the node, with the parameter file when there is one (§4.5)
 ├── include/
 │   └── <node_name>/
+│       ├── interface_names.hpp  # every topic, service, QoS depth, period, parameter and pipeline name as a constant: no ROS
 │       ├── pipelines.hpp      # Params, State, validate() and one eval_<pipeline>() per pipeline: plain C++, no ROS
+│       ├── engine.hpp         # the engine: parameter snapshots, state, run gate, diagnostics ring, run_<pipeline>(): no ROS
 │       ├── runtime.hpp        # SnapshotRing, RunGate (SPEC-12) + numeric helpers and DiagRing: no ROS
 │       ├── logic_api.hpp      # the functions the user writes, only when the manifest declares functions (§4.4)
-│       └── <node_name>_node.hpp
+│       ├── interfaces.hpp     # ROS adapter: publishers, subscriptions, services, timers
+│       ├── parameters.hpp     # ROS adapter: parameter declaration and updates
+│       ├── diagnostics.hpp    # ROS adapter: publishes the diagnostics ring
+│       ├── app.hpp            # the application: ROS context, node, executor
+│       └── <node_name>_node.hpp  # the rclcpp::Node: wires the parts together
 ├── logic/                     # only with functions: a copy of the user's folder (§4.4)
 └── src/
-    ├── <node_name>_node.cpp   # the ROS glue: interfaces, parameters, commit and publish
+    ├── interfaces.cpp, parameters.cpp, diagnostics.cpp, app.cpp, <node_name>_node.cpp
     ├── logic_defaults.cpp     # only with functions: weak placeholders for everything in logic_api.hpp (§4.4)
-    └── main.cpp
+    └── main.cpp               # creates the application and runs it
 ----
 
-The split is what makes the generator testable: `pipelines.hpp` and `runtime.hpp` need only a C++ compiler, so the numeric semantics of `SPEC-02` are checked on random inputs against a reference interpreter on any machine (`tests/integration/test_cpp_semantics.py`). Only the glue needs ROS.
+The split is what makes the generator testable: `interface_names.hpp`, `pipelines.hpp`, `engine.hpp` and `runtime.hpp` need only a C++ compiler, so the numeric semantics of `SPEC-02` are checked on random inputs against a reference interpreter, and the engine is driven directly, on any machine (`tests/integration/test_cpp_semantics.py`, `test_engine.py`). Only the adapters, the node and the application need ROS.
+
+The classes and their single responsibilities (the dependency points one way, from the ROS side to the engine):
+
+[cols="2m,4", options="header"]
+|===
+| Class | Responsibility
+| `<Node>Engine` | The ROS-free core. Owns the parameter snapshots, the state, the run gate and the diagnostics ring; evaluates a pipeline, commits its state and returns the outputs. Never publishes.
+| `<Node>Interfaces` | Creates the publishers, subscriptions, services and timers; for each trigger enters the gate, calls the engine and publishes what it returns.
+| `<Node>Parameters` | Declares the ROS parameters and forwards every update to the engine, which validates it.
+| `<Node>Diagnostics` | Publishes the engine's diagnostics ring on its own timer.
+| `<Node>` | The `rclcpp::Node` (kept so that launch files and composition work): constructs and wires the four parts above, calls the user's `setup()` and `teardown()`.
+| `<Node>App` | Owns the ROS context, the node and the executor. `main()` creates it and calls `run()`.
+|===
+
+Topics, services, QoS depths, timer periods, parameter names and pipeline names appear once, as constants in `interface_names.hpp`; the other files refer to them.
 
 === 4.2. Memory & Real-Time Guarantees
 * **Pre-allocation:** All buffers, QoS profiles, subscriber/publisher handles, state objects and callback groups MUST be created during node initialization (constructor, or `on_configure` for lifecycle nodes, `SPEC-05`) and never inside a callback.
@@ -138,12 +159,12 @@ The split is what makes the generator testable: `pipelines.hpp` and `runtime.hpp
 
 === 4.3. Execution of a Pipeline
 
-Each pipeline has a pure function `eval_<pipeline>(in, params, state, now_sec, dt_sec, out)` in `pipelines.hpp` (steps 1 to 4 of `SPEC-02` §7) and a method `run_<pipeline>` in the node (steps 5 and 6):
+Each pipeline has a pure function `eval_<pipeline>(in, params, state, now_sec, dt_sec, out)` in `pipelines.hpp` (steps 1 to 4 of `SPEC-02` §7) and a method `run_<pipeline>` in the engine and a handler of the same name in the interfaces adapter (steps 5 and 6):
 
-1. `run_<pipeline>` enters the run gate, pins one parameter snapshot for the whole execution (`SPEC-12` §5), and samples the clock once (`now_sec`, `dt_sec`).
+1. The interfaces adapter enters the engine's run gate and samples the clock once (`now_sec`); the engine's `run_<pipeline>` pins one parameter snapshot for the whole execution (`SPEC-12` §5) and derives `dt_sec`.
 2. `eval_<pipeline>` evaluates the DAG in creation order. A `let` becomes a `const` local, evaluated eagerly; every other node is inlined into its consumer, so `?:`, `&&` and `||` evaluate only the branch taken. Integer `+ - *` wrap, `/` and `%` fault on zero, and every helper sets a `fault` flag instead of throwing. Values reaching a state write or a message field are checked (NaN/Inf, narrow ranges). It returns `false` on any fault and writes the staged values into `out`.
-3. On `false`, the node reports `ERR_RUN_101` into a preallocated ring (drained once a second into a `/diagnostics` message) and returns: no state change, no publication, a service answers with a default response.
-4. Otherwise the node commits the staged state writes, then builds one value-initialised message per publisher named in `output_mapping`, in ascending publisher-id order, assigns the mapped fields and publishes.
+3. On `false`, the engine reports `ERR_RUN_101` into a preallocated ring (drained once a second into a `/diagnostics` message by the diagnostics adapter) and returns nothing: no state change, no publication, a service answers with a default response.
+4. Otherwise the engine commits the staged state writes and returns the result; the interfaces adapter, still holding the gate, builds one value-initialised message per publisher named in `output_mapping`, in ascending publisher-id order, assigns the mapped fields and publishes.
 
 Node-level rules:
 
