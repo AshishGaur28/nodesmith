@@ -64,11 +64,16 @@ for item in "${SELECTED[@]}"; do
 done
 
 echo "== colcon build"
+# ROS's setup scripts read variables they never set, so `set -u` is off while they are sourced.
+set +u
 # shellcheck disable=SC1091
 . /opt/ros/jazzy/setup.sh
+set -u
 (cd ws && colcon build --event-handlers console_direct+ ${JOBS:+--parallel-workers "$JOBS"})
 
 echo "== run the nodes and check their behaviour"
+set +u
 # shellcheck disable=SC1091
 . ws/install/setup.sh
+set -u
 python3 tests/jazzy/e2e.py "${SELECTED[@]%%:*}"
