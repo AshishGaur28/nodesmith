@@ -40,7 +40,7 @@ The dry-run prototype (73 checks) is the starting point.
 
 Exit: every valid corpus manifest lowers to the expected IR and hash in all three input formats. Every invalid one fails with the expected code and exit status.
 
-Status: *done* (`src/nodesmith/`: `ingest`, `schema`, `rules`, `expr`, `lower`, `canonical`, `compiler`, `cli`). `nodesmith validate` and `lower` pass the whole corpus (`pytest`, 102 tests), independently of the reference in `conformance/reference/`. `validate` reports every error it can find, following the recovery rules of `SPEC-04` §3 (`conformance/multi/`). Lowering needs the semantic checks and callback-group assignment, so those were built here too; M2 is therefore hardening, not a first implementation.
+Status: *done* (`src/nodesmith/manifest/`, `semantics/`, `ir/`, `api.py`; see `docs/ARCHITECTURE.adoc`). `nodesmith validate` and `lower` pass the whole corpus (`pytest`, 102 tests), independently of the reference in `conformance/reference/`. `validate` reports every error it can find, following the recovery rules of `SPEC-04` §3 (`conformance/multi/`). Lowering needs the semantic checks and callback-group assignment, so those were built here too; M2 is therefore hardening, not a first implementation.
 
 == M2. Semantic pass
 
@@ -55,7 +55,7 @@ Status: *done.*
 
 Gaps found and fixed while doing it:
 
-. `ERR_SEM_106` was specified for `parameter_constraints`, `step`, `one_of` and `fixed_length` (`SPEC-07` §5) but only `min`/`max` were checked. All are now checked against the defaults; constraints are evaluated (`src/nodesmith/constants.py`, and independently in the reference). `step` is now defined as aligned to `min` (0 if absent).
+. `ERR_SEM_106` was specified for `parameter_constraints`, `step`, `one_of` and `fixed_length` (`SPEC-07` §5) but only `min`/`max` were checked. All are now checked against the defaults; constraints are evaluated (`src/nodesmith/frontend/constants.py`, and independently in the reference). `step` is now defined as aligned to `min` (0 if absent).
 . An inconsistent interface declaration was reported again at every use; later uses are now silent.
 . `validation.regex` has no defined dialect and is not checked: recorded as a known gap.
 
@@ -67,15 +67,23 @@ Synthesis and atomic emission for node, parameters, state, pub/sub, services, ti
 
 Status: *written; the ROS part is not verified.*
 
-- `nodesmith generate` writes `CMakeLists.txt`, `package.xml` (depending on the chosen RMW only), `pipelines.hpp`, `runtime.hpp`, the node header and source, and `main.cpp`, into a temporary directory that is swapped in atomically (`src/nodesmith/cpp/`, `templates/cpp_rclcpp/`).
+- `nodesmith generate` writes `CMakeLists.txt`, `package.xml` (depending on the chosen RMW only), `pipelines.hpp`, `runtime.hpp`, the node header and source, and `main.cpp`, into a temporary directory that is swapped in atomically (`src/nodesmith/generators/cpp/`, `templates/cpp_rclcpp/`).
 - *Verified locally:* the pipelines (`pipelines.hpp`) are compiled with `-Wall -Wextra -Werror` and compared with a reference interpreter on random inputs, over every operator, built-in, field type and sink rule (`tests/fixtures/semantics.toml`), and the test itself is shown to catch a broken helper. The numeric helpers and the diagnostics ring have their own tests under UBSan and ThreadSanitizer. Output is byte-identical across runs, and the complete output for five examples is checked in (`tests/golden/`).
 - *Verified only against a stand-in:* the ROS glue (`tests/support/ros_stub/`, drivers in `tests/cpp/drivers/`) compiles against the signatures we believe Jazzy has and behaves as specified: staged state, publication order, parameter validation and snapshots, faults and diagnostics, timers, services. The stand-in cannot tell us that real rclcpp agrees.
-- *Not verified:* everything on real ROS 2 Jazzy. The `jazzy` job in `.github/workflows/ci.yml` builds the example nodes with `colcon` and runs `tests/jazzy/e2e.py` against them; it has not been run, and its first run is expected to need fixes.
+- *Not verified:* everything on real ROS 2 Jazzy. The `jazzy` job in `.github/workflows/ci.yml` builds the example nodes with `colcon` and runs `tests/jazzy/e2e.py` against them; it has not been run, and its first run is expected to need fixes. The sequence lives in one script, `tests/jazzy/run.sh`, driven by the list `tests/jazzy/examples.txt`; CI runs it with `--all`, and `tools/jazzy_check.sh` runs it on a developer machine in a throwaway Docker container, by default on the `smoke` subset (examples 02 and 03), and removes everything but the cached image after each run (`tools/jazzy_cleanup.sh` removes the image too).
 - *Refused for now:* extension blocks (M4), `zero_copy`, parameter arrays of `int32`/`float32`, `uint64[]`/`int64[]` fields and fixed-size ROS arrays.
 
 Exit: examples 01-03, 07 and 08 build with `colcon` and pass `tests/jazzy/e2e.py` in the `jazzy` job. This closes the ROS-side "unverified" notes for SPEC-03.
 
 Bugs found by the differential test while building this: fused multiply-add changed `low_pass` results on ARM (now `-ffp-contract=off`, and `SPEC-02` §6 forbids fusing), and the front end widened the arguments of `len` and `to_*` to `float64`, which broke `to_int64` of a large integer and `len` of a string (fixed in the product and the reference, with new corpus cases).
+
+=== M3b. User functions
+
+Status: *written; the ROS part is not verified.* A manifest can declare functions (`[[functions]]`, `SPEC-01` §4.9) that expressions call (`SPEC-02` §5.1). The user writes them as plain C++ functions in a `logic/` folder (no `main()`, CMake or ROS code, plus optional `setup()` and `teardown()` hooks); `generate` copies that folder into the one self-contained package and declares the expected signatures in `logic_api.hpp`. A function the user has not written is a weak placeholder that faults loudly (`SPEC-03` §4.4). When there is no `logic/` folder, `generate` writes a starter once and never rewrites it. This added `1.1.0` to the manifest and IR (`INDEX` §7).
+
+Checked by the conformance corpus (example 09 and nine new rejected cases), the differential test against a reference interpreter (the semantics fixture calls four functions), the generated node against the rclcpp stand-in (including a missing function), and tests of the starter, the copy, `--logic-dir` and the missing-function note. The `jazzy` job builds example 09 as one package with a real implementation (`tests/jazzy/user/speed_planner_node/`).
+
+Not done: Python user logic (with the Python target), reading an existing C++ file written in another shape (for example without `fault`), and checking a user's signature against the manifest at build time (a mismatch leaves the placeholder in use).
 
 == M4. C++ extensions
 

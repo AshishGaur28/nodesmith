@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>speed_planner_node</name>
+  <version>1.0.0</version>
+  <description>Plans a target speed from the distance ahead, with logic supplied by the user.</description>
+  <maintainer email="todo@example.com">TODO</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>rcl_interfaces</depend>
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <exec_depend>rmw_fastrtps_cpp</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

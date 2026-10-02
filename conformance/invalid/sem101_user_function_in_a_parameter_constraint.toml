@@ -1,0 +1,17 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[functions]]
+name = "f"
+returns = "float64"
+arguments = [{ name = "x", type = "float64" }]
+
+[parameters.k]
+type = "float64"
+default = 1.0
+[[parameter_constraints]]
+expression = "f(param.k) > 0.0"

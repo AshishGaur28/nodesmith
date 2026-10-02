@@ -1,0 +1,25 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[functions]]
+name = "f"
+returns = "float64"
+arguments = [{ name = "x", type = "float64" }]
+
+[[subscribers]]
+id = "s"
+topic = "/in"
+type = "std_msgs/msg/Float64"
+[interfaces."std_msgs/msg/Float64".fields]
+data = "float64"
+text = "string"
+[[pipelines]]
+name = "a"
+expressions = ["let y = f()"]
+[pipelines.trigger]
+type = "subscriber"
+source = "s"

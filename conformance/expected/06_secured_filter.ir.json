@@ -228,7 +228,7 @@
       }
     ]
   },
-  "ir_version": "1.0.0",
+  "ir_version": "1.1.0",
   "node_meta": {
     "description": "Low-pass filters IMU acceleration and flags over-limit readings.",
     "name": "imu_filter_node",

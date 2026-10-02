@@ -1,0 +1,114 @@
+= Nodesmith: What You Write and What Nodesmith Writes
+:toc: left
+
+A generated node can do a lot with the manifest alone (filters, thresholds, state machines), but
+real robots need logic a formula cannot express. Nodesmith keeps the two apart: *you* write the
+manifest and, where needed, plain C++ functions; *Nodesmith* writes everything else (`main()`,
+CMake, `package.xml`, the ROS code). You never write ROS code, and nothing you write lives inside
+what Nodesmith generates.
+
+== The workflow
+
+. Write the manifest: topics, services, parameters, state, pipelines, and a *declaration* of
+  each function you want to implement yourself.
+. `nodesmith generate --manifest node.toml --output-dir <package>`. The first time, if you have
+  no `logic/` folder next to the manifest, Nodesmith creates one with a starter `logic.cpp`: one
+  function per declaration, ready to fill in.
+. Fill in the functions in `logic/` (any number of `.cpp`/`.hpp` files, any library you like).
+. Run `generate` again. It copies your `logic/` folder into the package, which is complete: build
+  it with `colcon build` and run it like any ROS 2 node.
+. Change the manifest or your code whenever you like and run `generate` again. It rewrites the
+  package; your `logic/` folder is never touched once it exists.
+
+== Who owns what
+
+[cols="1,2,2", options="header"]
+|===
+| | `logic/` (next to the manifest) | The generated package
+| Written by | you (a starter once) | Nodesmith, on every `generate`
+| You edit it | yes | never
+| Contains | your functions | the node, `main()`, CMake, `package.xml`, a copy of `logic/`
+|===
+
+Use `--logic-dir <folder>` to keep your functions somewhere else.
+
+== Declaring a function
+
+[source,toml]
+----
+[[functions]]
+name = "plan_speed"
+description = "Chooses a target speed from the distance ahead."
+returns = "float64"
+arguments = [
+  { name = "distance", type = "float64" },
+  { name = "limit", type = "float64" },
+]
+----
+
+and calling it from a pipeline, like a built-in:
+
+[source,toml]
+----
+[[pipelines]]
+name = "plan"
+expressions = ["let speed = plan_speed(msg.data, param.speed_limit)"]
+# ...
+----
+
+Nodesmith checks the call (argument count and types, the result type) and generates the exact
+signatures you must write, in `include/<node>/logic_api.hpp` of the package.
+
+== Implementing it
+
+Plain functions in the global namespace `logic`:
+
+[source,cpp]
+----
+#include "speed_planner_node/logic_api.hpp"   // lets the compiler check your signatures
+
+namespace logic {
+
+void setup() {}      // optional: runs once when the node starts
+void teardown() {}   // optional: runs once when it stops
+
+double plan_speed(double distance, double limit, bool & fault) {
+  if (distance < 0) { fault = true; return 0.0; }   // abort this execution
+  return std::min(distance * 0.5, limit);
+}
+
+}  // namespace logic
+----
+
+There is no class to inherit and no ROS in it, so you can unit-test your functions without ROS.
+
+== Rules your function must follow
+
+* *Setting `fault = true` aborts the execution.* Nothing is committed or published, and the
+  node reports `ERR_RUN_101`, exactly as for a numeric fault in a formula.
+* *Be reentrant.* Pipelines in different callback groups can call your functions at the same
+  time. Keep state that must survive between executions in the manifest's `state_variables`
+  (pass it in, return the new value, assign it), where the generated node already protects it.
+* *It is called only when its call is evaluated.* A call inside a `?:` branch that is not taken
+  does not run.
+* *It cannot be used in `parameter_constraints`*, which are checked while the manifest is
+  checked, before any code exists.
+
+== When a function is missing
+
+A function you have not written does not stop the build. The package contains a placeholder that
+prints `logic::<name> is not implemented` once and faults, so the pipeline that calls it stops
+with `ERR_RUN_101` instead of computing with an invented value. `generate` also lists, after
+each run, the declared functions it cannot find in your folder.
+
+The same happens if a signature differs from `logic_api.hpp` (it then counts as a different
+function). Include the header in your file and the compiler will tell you about most mismatches.
+
+== When the manifest changes
+
+* *A function added:* `generate` names it; add it to your files (copy its declaration from
+  `logic_api.hpp`).
+* *A function removed:* delete it from your files; it is harmless until you do.
+* *A signature changed:* update your function to match `logic_api.hpp`.
+
+See `examples/09_user_functions.toml` and its generated package under `tests/golden/`.

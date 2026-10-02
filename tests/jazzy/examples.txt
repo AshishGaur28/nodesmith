@@ -1,0 +1,13 @@
+# The examples built and run on ROS 2 Jazzy. One line each: <example> <package> <scope> <extra packages from tests/jazzy/, comma separated or -> <package to run, or -> for the same>
+#
+# scope `smoke` runs everywhere, including `tools/jazzy_check.sh` on a developer machine; `full` runs only in CI (and with --all).
+# Both go through the same script (tests/jazzy/run.sh), so a local pass exercises the same commands as CI, on fewer examples.
+# The smoke set is chosen to cover the generated glue: a subscription and publisher, dynamic parameters with validation and state
+# (02), and a timer and a service (03). CI adds a custom service interface (07), a startup + subscriber +
+# timer node (08) and a node with user-implemented functions (09; its functions are the files in tests/jazzy/user/<package>/, passed as `--logic-dir`).
+02_filter_pipeline  imu_filter_node      smoke  -  -
+03_state_machine    counter_node         smoke  -  -
+01_simple_pubsub    echo_node            full   -  -
+07_gain_service     gain_node            full   my_interfaces  -
+08_link_watchdog    link_watchdog_node   full   -  -
+09_user_functions   speed_planner_node   full   -  -

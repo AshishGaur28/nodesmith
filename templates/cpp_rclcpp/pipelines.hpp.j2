@@ -9,6 +9,9 @@
 #include <string>
 #include <vector>
 #include "{{ pkg }}/runtime.hpp"
+{% if has_user_logic %}
+#include "{{ pkg }}/logic_api.hpp"
+{% endif %}
 
 namespace {{ ns }} {
 

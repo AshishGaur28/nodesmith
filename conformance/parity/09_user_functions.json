@@ -1,0 +1,106 @@
+{
+  "manifest_version": "1",
+  "node": {
+    "name": "speed_planner_node",
+    "namespace": "/planning",
+    "target_language": "cpp",
+    "version": "1.0.0",
+    "description": "Plans a target speed from the distance ahead, with logic supplied by the user."
+  },
+  "parameters": {
+    "speed_limit": {
+      "type": "float64",
+      "default": 2.0,
+      "description": "Highest speed the planner may ask for.",
+      "validation": {
+        "min": 0.0
+      }
+    }
+  },
+  "state_variables": {
+    "last_speed": {
+      "type": "float64",
+      "initial_value": 0.0
+    }
+  },
+  "subscribers": [
+    {
+      "id": "range_sub",
+      "topic": "/planning/range",
+      "type": "std_msgs/msg/Float64"
+    }
+  ],
+  "publishers": [
+    {
+      "id": "speed_pub",
+      "topic": "/planning/speed",
+      "type": "std_msgs/msg/Float64"
+    },
+    {
+      "id": "label_pub",
+      "topic": "/planning/label",
+      "type": "std_msgs/msg/String"
+    }
+  ],
+  "functions": [
+    {
+      "name": "plan_speed",
+      "description": "Chooses a target speed from the distance ahead, the limit and the previous speed.",
+      "returns": "float64",
+      "arguments": [
+        {
+          "name": "distance",
+          "type": "float64"
+        },
+        {
+          "name": "limit",
+          "type": "float64"
+        },
+        {
+          "name": "previous",
+          "type": "float64"
+        }
+      ]
+    },
+    {
+      "name": "describe",
+      "description": "A short label for a speed.",
+      "returns": "string",
+      "arguments": [
+        {
+          "name": "speed",
+          "type": "float64"
+        }
+      ]
+    }
+  ],
+  "interfaces": {
+    "std_msgs/msg/Float64": {
+      "fields": {
+        "data": "float64"
+      }
+    },
+    "std_msgs/msg/String": {
+      "fields": {
+        "data": "string"
+      }
+    }
+  },
+  "pipelines": [
+    {
+      "name": "plan",
+      "expressions": [
+        "let speed = plan_speed(msg.data, param.speed_limit, state.last_speed)",
+        "state.last_speed = speed"
+      ],
+      "trigger": {
+        "type": "subscriber",
+        "source": "range_sub"
+      },
+      "output_mapping": {
+        "speed_pub.data": "speed",
+        "label_pub.data": "describe(speed)"
+      }
+    }
+  ]
+}

@@ -12,7 +12,7 @@ What works today: `nodesmith validate` and `nodesmith lower` check a manifest an
 
 ## What it is meant to become
 
-Nodesmith turns a declarative node manifest (TOML, YAML or JSON) into a ROS 2 (Jazzy) node in C++ or Python source package. The specs stop at generation. Purely software and configuration driven: no hardware drivers, accelerators or hardware-in-the-loop.
+Nodesmith turns a declarative node manifest (TOML, YAML or JSON) into a ROS 2 (Jazzy) node in C++ or Python source package. Simple logic goes in the manifest as formulas; anything richer is a function you declare in the manifest and write as a plain C++ function in a `logic/` folder; Nodesmith generates everything else ([`docs/USER_GUIDE.adoc`](docs/USER_GUIDE.adoc)). The specs stop at generation. Purely software and configuration driven: no hardware drivers, accelerators or hardware-in-the-loop.
 
 ## Status
 
@@ -49,6 +49,8 @@ python tools/check_specs.py             # specs and schemas agree
 - Normative schemas: [`schemas/node_manifest.schema.json`](schemas/node_manifest.schema.json), [`schemas/node_ir.schema.json`](schemas/node_ir.schema.json).
 - Example manifests: [`examples/`](examples/) (all validate against the schema).
 - Conformance corpus: [`conformance/`](conformance/README.md).
+- What you write and what Nodesmith writes: [`docs/USER_GUIDE.adoc`](docs/USER_GUIDE.adoc).
+- How the code is organised: [`docs/ARCHITECTURE.adoc`](docs/ARCHITECTURE.adoc).
 - Plan and milestones: [`docs/PLAN.adoc`](docs/PLAN.adoc).
 - Reference material: [`docs/specs/reference/`](docs/specs/reference/) (concurrency primitives in C++, tested under ThreadSanitizer).
 

@@ -22,6 +22,9 @@ namespace {{ ns }} {
 class {{ cls }} : public rclcpp::Node {
 public:
   explicit {{ cls }}(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+{% if has_user_logic %}
+  ~{{ cls }}() override;  // runs the user's logic::teardown()
+{% endif %}
 
 private:
   void declare_parameters();       // constructor only: declaration, no pipeline resources

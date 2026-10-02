@@ -1,0 +1,102 @@
+= Nodesmith: How the Code Is Organised
+:toc: left
+
+A map of the source, so you can find things. The specs in `docs/specs/` say *what* Nodesmith
+does; this page says *where* the code for it is.
+
+== The layers
+
+Everything that processes a manifest is a library that does not know about the command line or any
+UI. Clients (the CLI, a future UI, a script) call `nodesmith.api` and nothing below it.
+
+[source,text]
+----
+cli/ , the UI in frontend/ , scripts          clients: arguments in, results out
+        │
+        ▼
+api.py                                        compile_manifest, write_ir, generate
+        │
+        ├─ manifest/    read the file and check its structure
+        │                ingest (TOML/YAML/JSON) → schema → cross-block rules
+        ├─ semantics/   the meaning: types, expressions, pipelines, parameters, callback groups
+        │                → the IR (language-neutral, canonical, hashed: ir/)
+        └─ generators/  one subpackage per output language; cpp/ today
+----
+
+A run goes through the steps in this order, each reporting every problem it finds before the run stops:
+
+[source,text]
+----
+manifest file → ingest → schema → rules → semantic checks + lowering → IR → generator → package
+----
+
+== Directory map
+
+[cols="2m,4", options="header"]
+|===
+| Path | What it holds
+| src/nodesmith/api.py | The public interface: check and lower a manifest, write the IR, generate a package (copying the user's `logic/` folder in, or writing a starter once).
+| src/nodesmith/diagnostics.py | The error and warning model: codes, the report, how a finding is printed.
+| src/nodesmith/cli/ | The command line: parse arguments, call `api`, print. No processing.
+| src/nodesmith/manifest/ | Reading a manifest: formats (`ingest`), structure (`schema`), cross-block rules (`rules`), source positions (`locate`).
+| src/nodesmith/semantics/ | What a manifest means; produces the IR.
+| src/nodesmith/semantics/language.py | The expression language's types, built-in functions and reserved words.
+| src/nodesmith/semantics/expr.py | Parser: text of an expression into a tree.
+| src/nodesmith/semantics/builder.py | Turns an expression tree into IR nodes, checking names and types.
+| src/nodesmith/semantics/pipelines.py | Lowers one pipeline (statements and output mapping) to an execution DAG.
+| src/nodesmith/semantics/callback_groups.py | Assigns callback groups from which pipelines share state (SPEC-12).
+| src/nodesmith/semantics/parameters.py | Parameter defaults, their validation and constraints.
+| src/nodesmith/semantics/constants.py | Evaluates a constraint on the defaults.
+| src/nodesmith/semantics/functions.py | The functions a manifest declares for the user to implement, and their entries in the IR.
+| src/nodesmith/semantics/interfaces.py | The `[interfaces]` declarations as trees of types.
+| src/nodesmith/semantics/lower.py | Runs the semantic checks and assembles the IR.
+| src/nodesmith/ir/ | Canonical JSON and the hash of the IR.
+| src/nodesmith/generators/cpp/ | The C++ generator. It is Python code that *writes* C++; the C++ templates are in `templates/`.
+| templates/cpp_rclcpp/ | Jinja templates and the fixed C++ runtime headers that every generated package contains.
+| schemas/ | The two JSON Schemas (manifest and IR). They are normative.
+| examples/ | Example manifests.
+| conformance/ | Test data for the manifest and semantic layers: inputs with the exact result each must give. See its README.
+| tests/ | Automated tests (see below).
+| tools/ | Scripts: spec consistency check, golden-file update, the Jazzy check.
+| frontend/ | The (empty) place for a UI. It would call `nodesmith.api`, never the layers below.
+|===
+
+== Inside the C++ generator
+
+[cols="2m,4", options="header"]
+|===
+| Module | Job
+| dag.py | One pipeline to the body of a C++ function (`eval_<pipeline>`), ROS-free.
+| parameters.py | `validate()`, parameter declaration and the update loop.
+| node.py | The ROS node: members, interface creation, the `run_<pipeline>` methods.
+| package.py | Assembles every file of the node package from the templates; writes it atomically.
+| logic.py | The user's functions: `logic_api.hpp`, the weak placeholders, the starter `logic.cpp` and reading the user's `logic/` folder.
+| naming.py, literals.py | Names, type mappings and C++ literals.
+| templates.py | Where the templates are, and the shared `runtime.hpp`.
+|===
+
+The generated code is split on purpose: `pipelines.hpp` and `runtime.hpp` need no ROS, so their
+behaviour is tested on any machine with a C++ compiler. Only the node glue needs ROS.
+
+== Tests
+
+[cols="2m,4", options="header"]
+|===
+| Where | What it proves
+| tests/unit/ | Small pieces: the parser, the evaluator, Python 3.11 compatibility of the source.
+| tests/integration/test_conformance.py | The front end gives the expected IR and errors for every conformance case.
+| tests/integration/test_cpp_semantics.py | Generated pipelines compute what the spec says, on random inputs, against a reference interpreter.
+| tests/integration/test_cpp_node.py | The generated node behaves correctly against a local stand-in for rclcpp.
+| tests/integration/test_generate.py, tests/golden/ | The generated files equal the checked-in ones, byte for byte.
+| tests/jazzy/, tools/jazzy_check.sh | The generated nodes on real ROS 2 Jazzy (CI, or locally in Docker).
+|===
+
+== Conventions
+
+* Format and lint with `ruff` (`ruff format .`, `ruff check .`), line length 100. CI enforces both.
+* Every module starts with a docstring saying what it is and where it sits; every public
+  function and class has a one-line docstring. Names are words, not single letters.
+* A function that does not fit on a screen is split. Checks are written so that each reports
+  its own error and the next one still runs (see `diagnostics.Report.guard`).
+* The specs are the source of truth. A behaviour change starts in `docs/specs/`, then in the
+  conformance data, then in the code.

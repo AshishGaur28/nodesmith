@@ -1,0 +1,27 @@
+// YOUR CODE. Nodesmith wrote this file once to get you started and never touches it again: edit it, split it into more
+// files, or replace it. Every .cpp/.hpp in this folder is copied into the generated package and built with it.
+// Rules:
+//   * Set `fault = true` to abort the current execution (nothing is committed or published, and the fault is reported
+//     as ERR_RUN_101). The stub bodies below do that until you implement them: delete that line when you do.
+//   * Callback groups may call your functions at the same time: keep each one reentrant, or protect any state of your own.
+//     State that must survive between executions belongs in the manifest's state_variables, passed in and returned.
+//   * `setup()` runs once at start and `teardown()` once at stop. Both are optional: delete them if you do not need them.
+#include "{{ pkg }}/logic_api.hpp"
+
+namespace logic {
+
+void setup() {}
+
+void teardown() {}
+{% for function in functions %}
+
+{{ function.returns }} {{ function.name }}({% for argument in function.arguments %}{{ argument.cpp_type }} {{ argument.name }}, {% endfor %}bool & fault) {
+{% for argument in function.arguments %}
+  (void){{ argument.name }};
+{% endfor %}
+  fault = true;  // TODO: implement {{ function.name }}, then delete this line.
+  return {};
+}
+{% endfor %}
+
+}  // namespace logic

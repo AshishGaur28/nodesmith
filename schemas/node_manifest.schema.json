@@ -3,7 +3,7 @@
   "$id": "urn:nodesmith:schema:node_manifest",
   "title": "Nodesmith Node Manifest Schema",
   "description": "Normative manifest schema (SPEC-01). Extension blocks are owned by SPEC-05/06/08/09/10/11/12; cross-block rules that JSON Schema cannot express are in SPEC-01 section 5.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "object",
   "required": [
     "node"
@@ -131,6 +131,12 @@
     },
     "interfaces": {
       "$ref": "#/$defs/Interfaces"
+    },
+    "functions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/UserFunction"
+      }
     }
   },
   "$defs": {
@@ -1208,6 +1214,55 @@
         "^[a-z][a-z0-9_]*/srv/[A-Z][A-Za-z0-9]*$": {
           "$ref": "#/$defs/SrvInterface"
         }
+      }
+    },
+    "FunctionArgument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "type": {
+          "$ref": "#/$defs/CanonicalType"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    },
+    "UserFunction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "returns"
+      ],
+      "description": "A function the user implements in the target language; expressions call it by name (SPEC-01 section 4.9, SPEC-02 section 5.1).",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "description": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FunctionArgument"
+          },
+          "default": []
+        },
+        "returns": {
+          "$ref": "#/$defs/CanonicalType"
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
       }
     }
   },

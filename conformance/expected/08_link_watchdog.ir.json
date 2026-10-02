@@ -200,7 +200,7 @@
       }
     ]
   },
-  "ir_version": "1.0.0",
+  "ir_version": "1.1.0",
   "node_meta": {
     "description": "Reports whether heartbeats keep arriving within a timeout.",
     "name": "link_watchdog_node",

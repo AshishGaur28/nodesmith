@@ -1,6 +1,6 @@
 = SPEC-00: System Architecture & Intermediate Representation (IR) Contract
 :status: Frozen
-:version: 1.0.0
+:version: 1.1.0
 :owner: Core Framework Architecture Team
 :toc: left
 :toclevels: 3
@@ -10,7 +10,7 @@
 
 `SPEC-00` fixes the pipeline stages and the IR contract between the user manifest (`SPEC-01`, `SPEC-02`) and the target generators (`SPEC-03`). The IR is the only input generators see, so nothing target-specific may enter it and nothing about a manifest may be lost in it.
 
-The normative IR definition is `schemas/node_ir.schema.json` (`ir_version` `1.0.0`). Extensions (`SPEC-05`–`SPEC-11`) add their configuration under the IR `extensions` object; their schemas are owned by those specs.
+The normative IR definition is `schemas/node_ir.schema.json` (`ir_version` `1.1.0`). Extensions (`SPEC-05`–`SPEC-11`) add their configuration under the IR `extensions` object; their schemas are owned by those specs.
 
 [text]
 ----
@@ -47,6 +47,7 @@ Stages 1–4 form `nodesmith validate` / `lower`; 5–6 are `generate`.
 | `parameters` | `name`, `canonical_type`, `default_value` (coerced to type), `read_only`, `description`, `validation`.
 | `parameter_constraints` | Each `parameter_constraints` expression lowered to an AST (`root_node_id` + `nodes`).
 | `state_buffers` | `name`, `canonical_type`, `initial_value`.
+| `functions` | The user functions the manifest declares (`SPEC-01` §4.9), sorted by `name`: `name`, `arguments` (`name`, `type_symbol`), `returns`, optional `description`. Absent when there are none.
 | `execution_dags` | One per pipeline: `id`, `trigger` (`kind`, `source_id`, `period_ms`, `clock`), `callback_group`, `nodes`, `state_writes`, `assignments`.
 | `concurrency` | Effective `executor`, `threads`, and `callback_groups` (`name`, `type`, `explicit`) as assigned by `SPEC-12` §3 during lowering.
 | `extensions` | Canonicalized extension blocks keyed by block name.
@@ -65,7 +66,8 @@ Stages 1–4 form `nodesmith validate` / `lower`; 5–6 are `generate`.
 | `index` | operands `[array, index]`
 | `unary`, `binary` | attrs `operator`; operands 1 or 2 node ids
 | `select` | operands `[cond, if_true, if_false]` (lowered `?:`, lazily evaluated)
-| `call` | attrs `function`; operands = arguments
+| `call` | attrs `function` (a built-in); operands = arguments
+| `user_call` | attrs `function` (declared under `functions`); operands = arguments, already widened to the declared argument types
 |===
 
 Every node carries its resolved `type_symbol` (a canonical type, `SPEC-02` §2), with any implicit widening made explicit as a `call` to the matching `to_*` function. `let` locals disappear: a local is the single node its expression created, referenced by every later use (`label` records the name of the first `let` that names a node; it is part of the IR and of the IR hash, and generators may use it for readable names).

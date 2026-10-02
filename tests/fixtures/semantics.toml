@@ -45,6 +45,27 @@ initial_value = false
 type = "string"
 initial_value = ""
 
+# functions the user implements (tests/support/user_functions.py has the implementations)
+[[functions]]
+name = "scale"
+returns = "float64"
+arguments = [{ name = "x", type = "float64" }, { name = "k", type = "float64" }]
+
+[[functions]]
+name = "label"
+returns = "string"
+arguments = [{ name = "n", type = "int32" }, { name = "text", type = "string" }]
+
+[[functions]]
+name = "double_unless_negative"
+returns = "int32"
+arguments = [{ name = "x", type = "int32" }]
+
+[[functions]]
+name = "total"
+returns = "float64"
+arguments = [{ name = "values", type = "float64[]" }]
+
 [[subscribers]]
 id = "in_sub"
 topic = "/test/in"
@@ -254,6 +275,24 @@ source = "in_sub"
 "out_pub.o_dur" = "doubled"
 "out_pub.o_bool" = "older"
 "out_pub.o_nested.y" = "msg.nested.x + to_float64(msg.nested.deeper.n)"
+
+# calls of user functions: widening of arguments, strings and arrays, a fault raised by the user, and
+# laziness (the second call sits in a branch that is not always taken)
+[[pipelines]]
+name = "user_logic"
+expressions = [
+  "let a = scale(msg.i32, 2)",
+  "let b = label(msg.i32, msg.text)",
+  "let c = msg.flag ? double_unless_negative(msg.i32) : 0",
+  "let d = total(msg.floats)",
+]
+[pipelines.trigger]
+type = "subscriber"
+source = "in_sub"
+[pipelines.output_mapping]
+"out_pub.o_f64" = "a + d"
+"out_pub.o_text" = "b"
+"out_pub.o_i32" = "c"
 
 [[pipelines]]
 name = "state_machine"

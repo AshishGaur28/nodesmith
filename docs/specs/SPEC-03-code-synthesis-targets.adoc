@@ -116,9 +116,12 @@ Generated C++ packages adhere strictly to `ament_cmake` standards:
 │   └── <node_name>/
 │       ├── pipelines.hpp      # Params, State, validate() and one eval_<pipeline>() per pipeline: plain C++, no ROS
 │       ├── runtime.hpp        # SnapshotRing, RunGate (SPEC-12) + numeric helpers and DiagRing: no ROS
+│       ├── logic_api.hpp      # the functions the user writes, only when the manifest declares functions (§4.4)
 │       └── <node_name>_node.hpp
+├── logic/                     # only with functions: a copy of the user's folder (§4.4)
 └── src/
     ├── <node_name>_node.cpp   # the ROS glue: interfaces, parameters, commit and publish
+    ├── logic_defaults.cpp     # only with functions: weak placeholders for everything in logic_api.hpp (§4.4)
     └── main.cpp
 ----
 
@@ -164,6 +167,30 @@ include::../../tests/golden/02_filter_pipeline/src/imu_filter_node_node.cpp[]
 *Unverified against a ROS distribution (check before relying on it):* `rclcpp::QoS(5).best_effort()` chaining; that `rclcpp::create_timer(this, clock, rclcpp::Duration, callback, group)` accepts `this` and a `Duration`; `OnSetParametersCallbackHandle` as a member type of `rclcpp::Node`; `create_service` with `rclcpp::ServicesQoS()` and a callback group; `declare_parameter<T>` returning the override-aware value; and that callback groups created before the node is added to an executor are picked up. The generated glue compiles and behaves against a local stand-in for these signatures (`tests/support/ros_stub/`); the `jazzy` CI job is the check against the real ones.
 
 Builds with `realtime.enabled` (`SPEC-10`) keep preallocated message objects and reset them to their defaults instead of declaring locals, so no allocation happens on the callback path (not implemented yet).
+
+=== 4.4. User Logic
+
+For the functions declared under `[[functions]]` (`SPEC-01` §4.9) the user writes plain functions in a `logic/` folder: no `main()`, no build files, no ROS code, no class to inherit. The generated package stays self-contained and fully regenerated; the user's files are copied into it and built with it.
+
+`include/<node_name>/logic_api.hpp` declares, in the global namespace `logic`, one free function per declared function, plus two optional hooks. The arguments and the return value use the C++ types of §3 (scalars by value, strings and arrays by const reference), and a final `bool & fault` parameter lets the implementation abort the execution:
+
+[source,cpp]
+----
+namespace logic {
+void setup();     // optional: runs once, after a valid start-up and before any pipeline can run
+void teardown();  // optional: runs once, when the node is destroyed
+/// Chooses a target speed from the distance ahead, the limit and the previous speed.
+double plan_speed(double distance, double limit, double previous, bool & fault);
+}
+----
+
+* A pipeline calls `::logic::plan_speed(..., fault)` and treats `fault` as a numeric fault (`SPEC-02` §7 step 6). The node calls `logic::setup()` at the end of construction and `logic::teardown()` from its destructor.
+* `src/logic_defaults.cpp` defines weak placeholders for `setup`, `teardown` and every declared function. The user's strong definition replaces a placeholder at link time. A function that is missing, or whose signature differs from the header (so that it is only an overload), leaves its placeholder in use: it prints `logic::<name> is not implemented` to standard error once and sets `fault`, so the pipeline stops with `ERR_RUN_101` instead of computing with an invented value. `setup` and `teardown` default to doing nothing.
+* The package is one executable with a generated `main.cpp`. Its `CMakeLists.txt` globs `logic/*.cpp`, `*.cc` and `*.cxx` (`CONFIGURE_DEPENDS`) and puts `logic/` on the include path.
+* `generate` reads the folder given by `--logic-dir` (default: `logic/` next to the manifest) and copies its `.cpp`, `.cc`, `.cxx`, `.hpp` and `.h` files, in path order, into the package's `logic/`. When that folder does not exist, `generate` first writes a starter `logic.cpp` into it, once, with one function per declaration whose body sets `fault` (so it builds and stops loudly until implemented). An existing folder is never modified: from then on it belongs to the user and Nodesmith never writes to it (`SPEC-04` §2.2).
+* After a manifest change, `generate` prints a note for each declared function whose name does not appear as `name(` in the user's files. This is a hint only; the placeholders are the safety.
+* The functions are plain C++ with no ROS dependency, so they can be unit-tested on their own.
+* A node without functions is unchanged: it has no `logic_api.hpp`, `logic/` or `logic_defaults.cpp`.
 
 == 5. Python Target (`rclpy`) Emission Architecture
 
@@ -289,7 +316,7 @@ if __name__ == '__main__':
 == 6. Template Engine Integration & Build Pipeline
 
 1. **Jinja2 Architecture:** The toolchain is implemented in Python 3.11+ and renders Jinja2 templates. Target templates are decoupled file groups in `templates/cpp_rclcpp/` and `templates/python_rclpy/`.
-2. **Context Injection:** Synthesizer modules (`src/nodesmith/synthesizer/`) ingest the `SPEC-00` AST models, build a target-specific context dictionary, and execute template expansion.
+2. **Context Injection:** Generator modules (`src/nodesmith/generators/<language>/`) ingest the `SPEC-00` AST models, build a target-specific context dictionary, and execute template expansion.
 3. **Formatting Post-Process Hooks:**
    * **C++:** Formatted via `clang-format` before writing to disk.
    * **Python:** Formatted via `ruff format`.

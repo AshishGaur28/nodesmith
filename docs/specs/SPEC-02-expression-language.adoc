@@ -1,6 +1,6 @@
 = SPEC-02: Expression Language & Pipeline Execution Semantics
 :status: Frozen
-:version: 1.0.0
+:version: 1.1.0
 :owner: Core Framework Architecture Team
 :toc: left
 :toclevels: 3
@@ -119,6 +119,17 @@ All are pure and allocation-free. `T` is any numeric type; a result is widened p
 | `now_sec()` | `float64` | Time on the trigger's clock (`steady`/`system`/`ros`; `steady` for non-timer triggers). Evaluated once per execution, so every call in one execution returns the same value.
 | `dt_sec()` | `float64` | Seconds since the previous execution of this pipeline on that clock, counting an execution that faulted; `0.0` on the first execution.
 |===
+
+=== 5.1. User Functions
+
+A function declared under `[[functions]]` (`SPEC-01` §4.9) is called like a built-in: `name(arg, ...)`. The language checks the call and the user supplies the body.
+
+* *Typing.* The call must have as many arguments as the declaration (`ERR_SEM_102` otherwise). Each argument is implicitly widened to its declared type along §2.2; any other mismatch is `ERR_SEM_102`. The call has the declared `returns` type. A name that is neither a built-in nor a declared function is `ERR_SEM_101`.
+* *Evaluation.* The function runs when its call is evaluated, and not at all if the call sits in a branch of `?:`, `&&` or `||` that is not taken. It runs at most once per evaluation of that call.
+* *Faults.* The implementation may report a numeric fault (for example a value it cannot compute), which aborts the execution exactly like a fault in the language (§6, §7 step 6). A returned NaN or Inf reaching a sink is a fault as usual.
+* *Concurrency.* Pipelines in different callback groups may run at the same time, so a function MUST be reentrant. State that must survive between executions belongs in `state_variables` (passed as an argument, returned and assigned), where callback groups protect it (`SPEC-12` §3); a function that keeps state of its own must protect it itself.
+* *Not at build time.* Functions are not available in `parameter_constraints`, which are evaluated while the manifest is checked (`ERR_SEM_101`).
+* *Reproducibility.* The language guarantees nothing about a user function; the guarantees of this section (§5) hold for the rest of the expression.
 
 The former block-style filters map onto these: a low-pass filter is `low_pass(x, state.prev, param.alpha)` with `state.prev` updated; a deadband is `deadband(...)`; a rate limiter is `rate_limit(...)` with its previous output held in state. Use `let k = 6.283185307179586 * param.cutoff_hz * dt_sec()` and `let alpha = k / (k + 1.0)` for a cutoff-frequency (rather than fixed-alpha) filter.
 

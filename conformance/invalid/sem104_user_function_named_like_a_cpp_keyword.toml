@@ -1,0 +1,10 @@
+manifest_version = "1"
+
+[node]
+name = "t"
+namespace = "/"
+target_language = "cpp"
+
+[[functions]]
+name = "delete"
+returns = "float64"

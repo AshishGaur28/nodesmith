@@ -1,0 +1,215 @@
+{
+  "concurrency": {
+    "callback_groups": [
+      {
+        "explicit": false,
+        "name": "state_domain_1",
+        "type": "MutuallyExclusive"
+      }
+    ],
+    "executor": "SingleThreadedExecutor",
+    "threads": 1
+  },
+  "execution_dags": [
+    {
+      "assignments": [
+        {
+          "source_node_id": "n4",
+          "target_field_path": "label_pub.data"
+        },
+        {
+          "source_node_id": "n3",
+          "target_field_path": "speed_pub.data"
+        }
+      ],
+      "callback_group": "state_domain_1",
+      "id": "plan",
+      "nodes": [
+        {
+          "attrs": {
+            "path": "data",
+            "root": "msg"
+          },
+          "id": "n0",
+          "op": "input",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "name": "speed_limit"
+          },
+          "id": "n1",
+          "op": "param",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "name": "last_speed"
+          },
+          "id": "n2",
+          "op": "state",
+          "operands": [],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "function": "plan_speed"
+          },
+          "id": "n3",
+          "label": "speed",
+          "op": "user_call",
+          "operands": [
+            "n0",
+            "n1",
+            "n2"
+          ],
+          "type_symbol": "float64"
+        },
+        {
+          "attrs": {
+            "function": "describe"
+          },
+          "id": "n4",
+          "op": "user_call",
+          "operands": [
+            "n3"
+          ],
+          "type_symbol": "string"
+        }
+      ],
+      "state_writes": [
+        {
+          "source_node_id": "n3",
+          "state_name": "last_speed"
+        }
+      ],
+      "trigger": {
+        "kind": "subscriber",
+        "source_id": "range_sub"
+      }
+    }
+  ],
+  "extensions": {},
+  "functions": [
+    {
+      "arguments": [
+        {
+          "name": "speed",
+          "type_symbol": "float64"
+        }
+      ],
+      "description": "A short label for a speed.",
+      "name": "describe",
+      "returns": "string"
+    },
+    {
+      "arguments": [
+        {
+          "name": "distance",
+          "type_symbol": "float64"
+        },
+        {
+          "name": "limit",
+          "type_symbol": "float64"
+        },
+        {
+          "name": "previous",
+          "type_symbol": "float64"
+        }
+      ],
+      "description": "Chooses a target speed from the distance ahead, the limit and the previous speed.",
+      "name": "plan_speed",
+      "returns": "float64"
+    }
+  ],
+  "interface_types": [
+    {
+      "fields": {
+        "data": "float64"
+      },
+      "fixed_size": false,
+      "kind": "msg",
+      "type_symbol": "std_msgs/msg/Float64"
+    },
+    {
+      "fields": {
+        "data": "string"
+      },
+      "fixed_size": false,
+      "kind": "msg",
+      "type_symbol": "std_msgs/msg/String"
+    }
+  ],
+  "interfaces": {
+    "publishers": [
+      {
+        "identifier": "label_pub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/planning/label",
+        "type_symbol": "std_msgs/msg/String",
+        "zero_copy": false
+      },
+      {
+        "identifier": "speed_pub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/planning/speed",
+        "type_symbol": "std_msgs/msg/Float64",
+        "zero_copy": false
+      }
+    ],
+    "services": [],
+    "subscribers": [
+      {
+        "identifier": "range_sub",
+        "qos": {
+          "depth": 10,
+          "durability": "volatile",
+          "history": "keep_last",
+          "reliability": "reliable"
+        },
+        "topic": "/planning/range",
+        "type_symbol": "std_msgs/msg/Float64",
+        "zero_copy": false
+      }
+    ]
+  },
+  "ir_version": "1.1.0",
+  "node_meta": {
+    "description": "Plans a target speed from the distance ahead, with logic supplied by the user.",
+    "name": "speed_planner_node",
+    "namespace": "/planning",
+    "version": "1.0.0"
+  },
+  "parameter_constraints": [],
+  "parameters": [
+    {
+      "canonical_type": "float64",
+      "default_value": 2.0,
+      "description": "Highest speed the planner may ask for.",
+      "name": "speed_limit",
+      "read_only": false,
+      "validation": {
+        "min": 0.0
+      }
+    }
+  ],
+  "state_buffers": [
+    {
+      "canonical_type": "float64",
+      "initial_value": 0.0,
+      "name": "last_speed"
+    }
+  ]
+}

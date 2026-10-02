@@ -1,4 +1,5 @@
 """`--format=json` output conforms to the schema printed in SPEC-04 §4.4 (read from the spec, so the two cannot drift)."""
+
 import json
 import re
 from pathlib import Path
@@ -23,7 +24,9 @@ CASES = [
 ]
 
 
-@pytest.mark.parametrize("manifest,flags", CASES, ids=lambda x: x.name if isinstance(x, Path) else "-".join(x) or "plain")
+@pytest.mark.parametrize(
+    "manifest,flags", CASES, ids=lambda x: x.name if isinstance(x, Path) else "-".join(x) or "plain"
+)
 def test_json_report_matches_the_spec_schema(capsys, manifest, flags):
     code = main(["--format", "json", "validate", "--manifest", str(manifest), *flags])
     report = json.loads(capsys.readouterr().out)

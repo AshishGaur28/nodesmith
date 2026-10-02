@@ -1,13 +1,14 @@
 """The product front end must agree with the conformance corpus (conformance/README.md)."""
+
 import json
 import re
 from pathlib import Path
 
 import pytest
 
-from nodesmith.canonical import canonical_json, ir_hash
-from nodesmith.compiler import compile_manifest
-from nodesmith.schema import ir_schema
+from nodesmith.api import compile_manifest
+from nodesmith.ir.canonical import canonical_json, ir_hash
+from nodesmith.manifest.schema import ir_schema
 
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS = ROOT / "conformance"
@@ -27,6 +28,7 @@ def test_valid_manifest_lowers_to_expected_ir(path):
 @pytest.mark.parametrize("path", VALID, ids=lambda p: p.stem)
 def test_ir_validates_against_ir_schema(path):
     from jsonschema import Draft202012Validator
+
     assert not list(Draft202012Validator(ir_schema()).iter_errors(compile_manifest(path).ir))
 
 
@@ -48,11 +50,13 @@ def test_invalid_manifest_is_rejected_with_its_code(path):
     result = compile_manifest(path, mode)
     if is_warning:
         assert result.ok and code in [w.code for w in result.report.warnings]
-        strict = compile_manifest(path, mode, strict=True)          # --strict promotes it to an error
+        strict = compile_manifest(path, mode, strict=True)  # --strict promotes it to an error
         assert not strict.ok and strict.report.errors[0].code == code
     else:
         assert not result.ok and result.ir is None
-        assert [d.code for d in result.report.errors] == [code], result.report.diagnostics   # one scenario, one error: no cascades
+        assert [d.code for d in result.report.errors] == [code], (
+            result.report.diagnostics
+        )  # one scenario, one error: no cascades
 
 
 MULTI = json.loads((CORPUS / "multi" / "expected.json").read_text())

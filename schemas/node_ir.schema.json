@@ -18,7 +18,7 @@
   "properties": {
     "ir_version": {
       "type": "string",
-      "const": "1.0.0"
+      "const": "1.1.0"
     },
     "node_meta": {
       "type": "object",
@@ -108,6 +108,13 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/IRInterfaceType"
+      }
+    },
+    "functions": {
+      "type": "array",
+      "description": "User functions declared by the manifest, sorted by name; absent when there are none.",
+      "items": {
+        "$ref": "#/$defs/IRFunction"
       }
     }
   },
@@ -381,7 +388,8 @@
             "unary",
             "binary",
             "select",
-            "call"
+            "call",
+            "user_call"
           ]
         },
         "type_symbol": {
@@ -395,7 +403,7 @@
         },
         "attrs": {
           "type": "object",
-          "description": "const: value; param/state: name; input: root (msg|req), path; unary/binary: operator; call: function.",
+          "description": "const: value; param/state: name; input: root (msg|req), path; unary/binary: operator; call: function (a built-in); user_call: function (declared under `functions`).",
           "additionalProperties": true
         },
         "label": {
@@ -587,6 +595,45 @@
           }
         }
       ]
+    },
+    "IRFunction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "arguments",
+        "returns"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "type_symbol"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type_symbol": {
+                "$ref": "#/$defs/IRType"
+              }
+            }
+          }
+        },
+        "returns": {
+          "$ref": "#/$defs/IRType"
+        }
+      }
     }
   }
 }

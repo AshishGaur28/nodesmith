@@ -38,17 +38,17 @@ manifest ──► SPEC-01 schema check ──► SPEC-00 lowering ──► IR 
 
 | `SPEC-00`
 | link:SPEC-00-architecture-ir.adoc[System Architecture & IR Contract]
-| Frozen | 1.0.0
+| Frozen | 1.1.0
 | Pipeline stages, IR model and canonical form, `schemas/node_ir.schema.json`.
 
 | `SPEC-01`
 | link:SPEC-01-user-schema-syntax.adoc[User Manifest Schema & Syntax]
-| Frozen | 1.0.0
+| Frozen | 1.1.0
 | Manifest structure, identifiers, references, cross-block rules, `schemas/node_manifest.schema.json`.
 
 | `SPEC-02`
 | link:SPEC-02-expression-language.adoc[Expression Language & Pipeline Execution Semantics]
-| Frozen | 1.0.0
+| Frozen | 1.1.0
 | Types, grammar, built-ins, numeric faults, per-trigger execution order.
 
 | `SPEC-03`
@@ -129,7 +129,7 @@ Read `SPEC-01`, `SPEC-02`, `SPEC-00`, `SPEC-04` first; then `SPEC-12` and `SPEC-
 | `docs/specs/SPEC-04*.adoc` §4 | The single registry of error codes and exit statuses.
 | `docs/specs/reference/cpp/` | Tested reference implementation of the `SPEC-12` primitives (parameter snapshot ring, run gate) with a ThreadSanitizer stress test. Spec text includes it, so the document cannot drift from the tested code.
 | `conformance/` | The conformance corpus: expected IR and hash for every example, YAML/JSON parity copies, and one rejected manifest per error code a manifest can trigger. `python conformance/verify.py` runs it; the reference front end in `conformance/reference/` is evidence, not the product (`conformance/README.md`). |
-| `examples/*.toml` | Reference manifests; `01`–`03` and `07`–`08` cover the core model (`07` service-heavy, C++; `08` startup/subscriber/timer triggers, Python), `04_all_extensions.toml` uses every block. They must validate against the manifest schema.
+| `examples/*.toml` | Reference manifests; `01`–`03` and `07`–`09` cover the core model (`07` service-heavy, C++; `08` startup/subscriber/timer triggers, Python; `09` user-implemented functions, C++), `04_all_extensions.toml` uses every block. They must validate against the manifest schema.
 |===
 
 *Normativity:* the schemas, the registry, the rules stated in prose, and the `reference/` sources are normative. Code snippets in `SPEC-03` and `SPEC-05`–`SPEC-11` show the required structure and obey the rules of `SPEC-02`, `SPEC-10` and `SPEC-12`, but only their ROS-independent parts have been compiled and run; treat the rest as illustrative until a generator template is built and tested against a real ROS distribution. Where a snippet disagrees with the prose or a schema, the prose or schema wins.
@@ -159,7 +159,7 @@ Read `SPEC-01`, `SPEC-02`, `SPEC-00`, `SPEC-04` first; then `SPEC-12` and `SPEC-
 
 == 7. Freeze Policy
 
-Frozen surface: `schemas/node_manifest.schema.json` (revision `1.0.0`, `manifest_version = "1"`), `schemas/node_ir.schema.json` (`ir_version` `1.0.0`), `SPEC-00`, `SPEC-01`, `SPEC-02`, and the `SPEC-04` §4 registry.
+Frozen surface: `schemas/node_manifest.schema.json` (revision `1.1.0`, `manifest_version = "1"`), `schemas/node_ir.schema.json` (`ir_version` `1.1.0`), `SPEC-00`, `SPEC-01`, `SPEC-02`, and the `SPEC-04` §4 registry.
 
 [cols="1m,3", options="header"]
 |===
@@ -170,6 +170,8 @@ Frozen surface: `schemas/node_manifest.schema.json` (revision `1.0.0`, `manifest
 |===
 
 *Registry:* the set of codes is closed. A code is never renumbered, reused or deleted: a code that is no longer emitted is marked *Retired* and stays reserved (`ERR_SEM_111`, `ERR_CNC_202`, `ERR_CNC_203`). A code's meaning and exit status never change; a new code is appended with its spec text, exit status and a corpus case.
+
+*Revision history:* `1.1.0` adds `[[functions]]` (declared user functions, `SPEC-01` §4.9, `SPEC-02` §5.1) and the IR's `functions` and `user_call`; every `1.0` manifest is still valid.
 
 *Ambiguities found later* are resolved by a spec clarification (patch) when the intended behaviour is already what the corpus shows, and by a minor or major change otherwise.
 

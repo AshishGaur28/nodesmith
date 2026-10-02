@@ -1,6 +1,6 @@
 = SPEC-01: User Manifest Schema & Syntax Specification
 :status: Frozen
-:version: 1.0.0
+:version: 1.1.0
 :owner: Core Framework Architecture Team
 :toc: left
 :toclevels: 3
@@ -110,6 +110,27 @@ fixed_size = true
 ----
 
 Keys are type strings (`<pkg>/msg/<Name>` or `<pkg>/srv/<Name>`). A message entry has `fields` and optional `fixed_size` (default `false`); a service entry has `request` and `response`. Each field map is *dotted leaf path → ROS primitive type*: `bool`, `byte`, `char`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`, `int64`, `uint64`, `float32`, `float64`, `string`, `time`, `duration`, each optionally with `[]` for arrays.
+
+=== 4.9. `[[functions]]`
+
+Logic that the expression language cannot express (loops, a controller with history, a library call) is written by the user in the target language. The manifest only *declares* the function, so that Nodesmith can check every call and generate the interface:
+
+[source,toml]
+----
+[[functions]]
+name = "plan_speed"
+description = "Chooses a target speed from the remaining distance."
+returns = "float64"
+arguments = [
+  { name = "distance", type = "float64" },
+  { name = "limit", type = "float64" },
+]
+----
+
+* `name` follows the identifier rules of §4.2 and must not be a reserved word, a target-language keyword or a built-in function name; two functions may not share a name (`ERR_SEM_104`).
+* `arguments` is an ordered list of `{ name, type }` (default none). Argument names follow §4.2 and are unique within the function (`ERR_SEM_104`). `type` and `returns` are canonical types (`SPEC-02` §2.1).
+* An expression calls the function like a built-in (`plan_speed(msg.range, param.limit)`); the call is checked and typed by `SPEC-02` §5.1.
+* The body is not in the manifest, and no code snippet is ever embedded in it (§8 rule 1). The generator produces an abstract interface that the user implements in a package of their own (`SPEC-03` §4.4).
 
 == 5. Extension Blocks
 

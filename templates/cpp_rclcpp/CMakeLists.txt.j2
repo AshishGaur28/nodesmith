@@ -14,7 +14,15 @@ find_package(ament_cmake REQUIRED)
 find_package({{ dep }} REQUIRED)
 {% endfor %}
 
+{% if has_user_logic %}
+# The functions the manifest declares are written by the user: logic/ is a copy of their folder (see include/{{ pkg }}/logic_api.hpp),
+# and src/logic_defaults.cpp holds weak placeholders for whatever they have not written.
+file(GLOB_RECURSE USER_LOGIC CONFIGURE_DEPENDS logic/*.cpp logic/*.cc logic/*.cxx)
+add_executable({{ pkg }} src/main.cpp src/{{ pkg }}_node.cpp src/logic_defaults.cpp ${USER_LOGIC})
+target_include_directories({{ pkg }} PRIVATE logic)
+{% else %}
 add_executable({{ pkg }} src/main.cpp src/{{ pkg }}_node.cpp)
+{% endif %}
 target_include_directories({{ pkg }} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)

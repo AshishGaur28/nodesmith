@@ -103,7 +103,7 @@
       }
     ]
   },
-  "ir_version": "1.0.0",
+  "ir_version": "1.1.0",
   "node_meta": {
     "name": "echo_node",
     "namespace": "/demo",
