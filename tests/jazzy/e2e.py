@@ -140,6 +140,9 @@ def scenario_08(h):
         "the link to be reported down",
         10,
     )
+    # The timer checks every 200 ms, so with a 0.1 s timeout one heartbeat is seen as "up" only if the check happens within
+    # 0.1 s of it. Widen the timeout first so that the check always falls inside it.
+    assert h.set_parameter("/monitoring/link_watchdog_node", "timeout_s", 1.0).successful
     pub = h.create_publisher(Empty, "/monitoring/heartbeat", 10)
     h.wait_for_subscribers(pub)
     n = len(h.received["/monitoring/link_alive"])
