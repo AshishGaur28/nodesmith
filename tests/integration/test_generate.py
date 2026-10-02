@@ -257,3 +257,37 @@ def test_a_node_without_functions_has_no_logic_files(tmp_path):
     assert (p / "src" / "main.cpp").exists()
     assert not (p / "include" / "imu_filter_node" / "logic_api.hpp").exists()
     assert not (p / "logic").exists() and not (p / "src" / "logic_defaults.cpp").exists()
+
+
+@pytest.mark.parametrize(
+    "path", ["examples/02_filter_pipeline.toml", "tests/fixtures/semantics.toml"]
+)
+def test_the_parameter_file_gives_back_the_manifest_defaults(path):
+    """The YAML a user edits parses to exactly the declared defaults, with the declared types."""
+    import yaml
+
+    ir = compile_manifest(ROOT / path).ir
+    pkg = ir["node_meta"]["name"]
+    loaded = yaml.safe_load(generate_package(ir)[f"config/{pkg}.params.yaml"])["/**"][
+        "ros__parameters"
+    ]
+    for parameter in ir["parameters"]:
+        value = parameter["default_value"]
+        if value == [] or parameter["canonical_type"] == "bytes":
+            continue  # empty arrays are comments; bytes are checked on Jazzy
+        got = loaded[parameter["name"]]
+        assert got == value and type(got) is type(value), parameter["name"]
+
+
+def test_the_launch_file_and_parameter_file_are_installed(tmp_path):
+    files = generate_package(compile_manifest(ROOT / "examples/02_filter_pipeline.toml").ir)
+    assert "launch/imu_filter_node.launch.py" in files
+    assert "parameters=[params]" in files["launch/imu_filter_node.launch.py"]
+    assert "install(DIRECTORY launch config" in files["CMakeLists.txt"]
+
+
+def test_a_node_without_parameters_has_no_parameter_file():
+    files = generate_package(compile_manifest(ROOT / "examples/01_simple_pubsub.toml").ir)
+    assert not [f for f in files if f.startswith("config/")]
+    assert "parameters=" not in files["launch/echo_node.launch.py"]
+    assert "install(DIRECTORY launch DESTINATION" in files["CMakeLists.txt"]

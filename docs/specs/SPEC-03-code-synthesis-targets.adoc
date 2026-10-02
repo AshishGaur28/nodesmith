@@ -112,6 +112,10 @@ Generated C++ packages adhere strictly to `ament_cmake` standards:
 <node_name>/
 ├── CMakeLists.txt
 ├── package.xml                # exec_depend on the chosen RMW only (§2.1)
+├── config/
+│   └── <node_name>.params.yaml  # only with parameters: every parameter with its manifest default (§4.5)
+├── launch/
+│   └── <node_name>.launch.py    # starts the node, with the parameter file when there is one (§4.5)
 ├── include/
 │   └── <node_name>/
 │       ├── pipelines.hpp      # Params, State, validate() and one eval_<pipeline>() per pipeline: plain C++, no ROS
@@ -191,6 +195,15 @@ double plan_speed(double distance, double limit, double previous, bool & fault);
 * After a manifest change, `generate` prints a note for each declared function whose name does not appear as `name(` in the user's files. This is a hint only; the placeholders are the safety.
 * The functions are plain C++ with no ROS dependency, so they can be unit-tested on their own.
 * A node without functions is unchanged: it has no `logic_api.hpp`, `logic/` or `logic_defaults.cpp`.
+
+=== 4.5. Runtime Configuration
+
+Nothing is read from the manifest at run time. What can change without regenerating is what ROS already provides, and the package makes it easy to use:
+
+* `config/<node_name>.params.yaml` lists every parameter with its manifest default under `/**: ros__parameters:` (so it applies under any node name or namespace) and is installed to `share/<node_name>/config/`. A user copies it, edits the values and passes it with `--ros-args --params-file`, or through the launch file; ROS parses it. Empty array defaults are written as comments, because YAML cannot give an empty list an element type. Values go through the same `validate()` as the manifest defaults: an invalid value makes the node refuse to start.
+* `launch/<node_name>.launch.py` runs the node and passes the parameter file when the node has parameters (`ros2 launch <node_name> <node_name>.launch.py`).
+* Parameters can also be set with `-p name:=value` at start-up and, unless `read_only`, with `ros2 param set` while running (`SPEC-07` §3.1). Topic and service names can be remapped with `-r`.
+* Topics, QoS, pipelines, formulas, callback groups and threads are fixed at generation time.
 
 == 5. Python Target (`rclpy`) Emission Architecture
 

@@ -30,5 +30,6 @@ ament_target_dependencies({{ pkg }}{% for dep in depends %} {{ dep }}{% endfor %
 
 install(TARGETS {{ pkg }} DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY launch{% if has_params %} config{% endif %} DESTINATION share/${PROJECT_NAME})
 
 ament_package()

@@ -27,5 +27,6 @@ ament_target_dependencies(speed_planner_node diagnostic_msgs rcl_interfaces rclc
 
 install(TARGETS speed_planner_node DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 
 ament_package()

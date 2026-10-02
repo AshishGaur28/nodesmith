@@ -23,5 +23,6 @@ ament_target_dependencies(echo_node diagnostic_msgs rcl_interfaces rclcpp std_ms
 
 install(TARGETS echo_node DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 
 ament_package()

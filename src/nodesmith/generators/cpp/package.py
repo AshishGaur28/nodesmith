@@ -20,6 +20,7 @@ from .parameters import (
     check_parameter_types,
     constraint_functions,
     declaration_lines,
+    params_yaml,
     update_lines,
     validation_checks,
 )
@@ -140,12 +141,20 @@ def _node_files(ir: dict, pipelines: list[PipelineInfo], result_types: dict, has
             has_params=bool(ir["parameters"]),
         ),
         "CMakeLists.txt": env.get_template("CMakeLists.txt.j2").render(
-            pkg=package_name, depends=depends, has_user_logic=shared["has_user_logic"]
+            pkg=package_name,
+            depends=depends,
+            has_user_logic=shared["has_user_logic"],
+            has_params=bool(ir["parameters"]),
+        ),
+        f"launch/{package_name}.launch.py": env.get_template("launch.py.j2").render(
+            ir_hash=hash_, pkg=package_name, has_params=bool(ir["parameters"])
         ),
         "src/main.cpp": env.get_template("main.cpp.j2").render(
             **shared, executor=ir["concurrency"]["executor"], threads=threads
         ),
     }
+    if ir["parameters"]:
+        files[f"config/{package_name}.params.yaml"] = params_yaml(ir)
     return files
 
 

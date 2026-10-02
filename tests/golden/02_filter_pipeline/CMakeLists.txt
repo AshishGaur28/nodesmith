@@ -24,5 +24,6 @@ ament_target_dependencies(imu_filter_node diagnostic_msgs rcl_interfaces rclcpp 
 
 install(TARGETS imu_filter_node DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 
 ament_package()

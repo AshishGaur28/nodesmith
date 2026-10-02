@@ -25,5 +25,6 @@ ament_target_dependencies(gain_node diagnostic_msgs my_interfaces rcl_interfaces
 
 install(TARGETS gain_node DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 
 ament_package()

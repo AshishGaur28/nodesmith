@@ -24,5 +24,6 @@ ament_target_dependencies(counter_node diagnostic_msgs rcl_interfaces rclcpp std
 
 install(TARGETS counter_node DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 
 ament_package()

@@ -4,6 +4,7 @@
 It mirrors tests/cpp/drivers/*.cpp, which run the same scenarios against the rclcpp stand-in. Usage: e2e.py <example> ...
 """
 
+import signal
 import subprocess
 import sys
 import time
@@ -68,6 +69,18 @@ class Harness(Node):
 
 def start(package):
     return subprocess.Popen(["ros2", "run", package, package])
+
+
+def launch_check(package):
+    """The installed launch file starts the node with its parameter file and the node stays up. A bad parameter
+    file (wrong type, bad syntax) makes the node refuse to start, so this fails then."""
+    proc = subprocess.Popen(["ros2", "launch", package, f"{package}.launch.py"])
+    try:
+        time.sleep(4.0)
+        assert proc.poll() is None, "ros2 launch stopped within 4 s"
+    finally:
+        proc.send_signal(signal.SIGINT)
+        proc.wait(timeout=20)
 
 
 def scenario_02(h):
@@ -197,6 +210,12 @@ def main(examples):
     failures = 0
     names = packages()
     for example in examples:
+        try:
+            launch_check(names[example])
+            print(f"LAUNCH {example}")
+        except Exception as e:  # noqa: BLE001
+            failures += 1
+            print(f"FAIL {example} (launch file): {e!r}")
         scenario = SCENARIOS.get(example)
         if (
             scenario is None

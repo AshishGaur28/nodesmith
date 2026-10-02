@@ -111,4 +111,21 @@ function). Include the header in your file and the compiler will tell you about 
 * *A function removed:* delete it from your files; it is harmless until you do.
 * *A signature changed:* update your function to match `logic_api.hpp`.
 
+== Changing values without rebuilding
+
+The generated package has a parameter file, `config/<node>.params.yaml`, with every parameter and
+its manifest default, and a launch file. Copy the file, edit the values and start the node:
+
+[source,bash]
+----
+ros2 launch <node> <node>.launch.py                                   # defaults
+ros2 run <node> <node> --ros-args --params-file my_values.yaml        # your copy
+ros2 run <node> <node> --ros-args -p alpha:=0.7                       # one value
+ros2 param set /<namespace>/<node> alpha 0.7                          # while it runs
+----
+
+A value outside the manifest's limits is refused: at start-up the node does not start, at run
+time the change is rejected and nothing changes. Topics, QoS, pipelines and formulas are fixed
+when you run `generate`; change the manifest for those.
+
 See `examples/09_user_functions.toml` and its generated package under `tests/golden/`.
