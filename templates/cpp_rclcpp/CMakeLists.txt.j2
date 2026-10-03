@@ -5,8 +5,10 @@ if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -ffp-contract=off)  # no fused multiply-add: float results must be bit-identical on every target (SPEC-02 §6)
+  # No fused multiply-add: float results must be bit-identical on every target (SPEC-02 §6).
+  add_compile_options(-Wall -Wextra -ffp-contract=off)
 endif()
 
 find_package(ament_cmake REQUIRED)
@@ -14,11 +16,20 @@ find_package(ament_cmake REQUIRED)
 find_package({{ dep }} REQUIRED)
 {% endfor %}
 
-set(NODE_SOURCES src/main.cpp src/app.cpp src/{{ pkg }}_node.cpp src/interfaces.cpp src/parameters.cpp src/diagnostics.cpp)
+set(NODE_SOURCES
+  src/main.cpp
+  src/app.cpp
+  src/{{ pkg }}_node.cpp
+  src/interfaces.cpp
+  src/parameters.cpp
+  src/diagnostics.cpp)
+
 {% if has_user_logic %}
-# The functions the manifest declares are written by the user: logic/ is a copy of their folder (see include/{{ pkg }}/logic_api.hpp),
-# and src/logic_defaults.cpp holds weak placeholders for whatever they have not written.
+# The functions the manifest declares are written by the user. logic/ is a copy of their
+# folder (see include/{{ pkg }}/logic_api.hpp) and src/logic_defaults.cpp holds weak
+# placeholders for whatever they have not written.
 file(GLOB_RECURSE USER_LOGIC CONFIGURE_DEPENDS logic/*.cpp logic/*.cc logic/*.cxx)
+
 add_executable({{ pkg }} ${NODE_SOURCES} src/logic_defaults.cpp ${USER_LOGIC})
 target_include_directories({{ pkg }} PRIVATE logic)
 {% else %}
@@ -27,7 +38,11 @@ add_executable({{ pkg }} ${NODE_SOURCES})
 target_include_directories({{ pkg }} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-ament_target_dependencies({{ pkg }}{% for dep in depends %} {{ dep }}{% endfor %})
+ament_target_dependencies({{ pkg }}
+{% for dep in depends %}
+  {{ dep }}
+{% endfor %}
+  )
 
 install(TARGETS {{ pkg }} DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)

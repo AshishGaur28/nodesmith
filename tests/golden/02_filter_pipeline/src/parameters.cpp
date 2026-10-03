@@ -8,38 +8,49 @@
 
 namespace sensors::chassis {
 
-ImuFilterNodeParameters::ImuFilterNodeParameters(rclcpp::Node & node, ImuFilterNodeEngine & engine) : engine_(engine) {
-  Params initial;  // effective values include launch-file and command-line overrides
+ImuFilterNodeParameters::ImuFilterNodeParameters(rclcpp::Node & node, ImuFilterNodeEngine & engine)
+    : engine_(engine) {
+  // The effective values include launch-file and command-line overrides.
+  Params initial;
+
   rcl_interfaces::msg::ParameterDescriptor d_alpha;
   d_alpha.description = "Low-pass smoothing factor.";
   d_alpha.floating_point_range.resize(1);
   d_alpha.floating_point_range[0].from_value = 0.0;
   d_alpha.floating_point_range[0].to_value = 1.0;
   d_alpha.floating_point_range[0].step = 0.0;
-  initial.alpha = node.declare_parameter<double>(names::kParamAlpha, static_cast<double>(0.85), d_alpha);
+  initial.alpha = node.declare_parameter<double>(
+      names::kParamAlpha, static_cast<double>(0.85), d_alpha);
+
   rcl_interfaces::msg::ParameterDescriptor d_max_accel;
   d_max_accel.floating_point_range.resize(1);
   d_max_accel.floating_point_range[0].from_value = 0.0;
   d_max_accel.floating_point_range[0].to_value = std::numeric_limits<double>::max();
   d_max_accel.floating_point_range[0].step = 0.0;
-  initial.max_accel = node.declare_parameter<double>(names::kParamMaxAccel, static_cast<double>(20.0), d_max_accel);
+  initial.max_accel = node.declare_parameter<double>(
+      names::kParamMaxAccel, static_cast<double>(20.0), d_max_accel);
+
   if (auto why = engine_.start(initial)) {
     throw rclcpp::exceptions::InvalidParameterValueException(*why);  // refuse to start
   }
-  handle_ = node.add_on_set_parameters_callback(
-    [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
+
+  handle_ = binding::add_parameter_callback(
+      node, [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
 }
 
-// Runs on the parameter-service thread, concurrently with the pipelines. It never touches state and never blocks a pipeline:
-// the engine builds a whole new snapshot and swaps it in (SPEC-07 §3.1, SPEC-12 §5).
-rcl_interfaces::msg::SetParametersResult ImuFilterNodeParameters::on_set(const std::vector<rclcpp::Parameter> & updates) {
+// Runs on the parameter-service thread, concurrently with the pipelines. It never touches state
+// and never blocks a pipeline: the engine builds a whole new snapshot and swaps it in
+// (SPEC-07 section 3.1, SPEC-12 section 5).
+rcl_interfaces::msg::SetParametersResult ImuFilterNodeParameters::on_set(
+    const std::vector<rclcpp::Parameter> & updates) {
   auto reject = [this](std::string why) {
     engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);
-    rcl_interfaces::msg::SetParametersResult r;
-    r.successful = false;
-    r.reason = std::move(why);
-    return r;
+    rcl_interfaces::msg::SetParametersResult result;
+    result.successful = false;
+    result.reason = std::move(why);
+    return result;
   };
+
   Params next = engine_.parameters();
   for (const auto & p : updates) {
     [[maybe_unused]] const std::string & name = p.get_name();
@@ -49,10 +60,15 @@ rcl_interfaces::msg::SetParametersResult ImuFilterNodeParameters::on_set(const s
       next.max_accel = p.as_double();
     }
   }
-  if (auto why = engine_.update(next)) return reject(*why);  // the whole batch is rejected, nothing is published
-  rcl_interfaces::msg::SetParametersResult ok;
-  ok.successful = true;
-  return ok;
+
+  // The whole batch is rejected, or nothing is published.
+  if (auto why = engine_.update(next)) {
+    return reject(*why);
+  }
+
+  rcl_interfaces::msg::SetParametersResult accepted;
+  accepted.successful = true;
+  return accepted;
 }
 
 }  // namespace sensors::chassis

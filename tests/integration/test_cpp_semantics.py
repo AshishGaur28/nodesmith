@@ -36,10 +36,15 @@ def test_the_harness_notices_a_wrong_helper(tmp_path, monkeypatch):
     header = templates / "runtime_helpers.hpp"
     text = header.read_text()
     broken = re.sub(
-        r"inline T wrap_add\(T a, T b\) \{.*\}\n",
-        "inline T wrap_add(T a, T b) { T r; if (__builtin_add_overflow(a, b, &r)) return std::numeric_limits<T>::max(); return r; }\n",
+        r"inline T wrap_add\(T a, T b\) \{.*?\n\}\n",
+        "inline T wrap_add(T a, T b) {\n"
+        "  T r;\n"
+        "  if (__builtin_add_overflow(a, b, &r)) return std::numeric_limits<T>::max();\n"
+        "  return r;\n"
+        "}\n",
         text,
         count=1,
+        flags=re.S,
     )
     assert broken != text
     header.write_text(broken)

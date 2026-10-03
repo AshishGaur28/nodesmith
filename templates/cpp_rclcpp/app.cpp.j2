@@ -2,22 +2,24 @@
 // IR hash: {{ ir_hash }}
 #include "{{ pkg }}/app.hpp"
 
+#include <cstdlib>
+
 namespace {{ ns }} {
 
 {{ cls }}App::{{ cls }}App(int argc, char ** argv)
-: context_(argc, argv),
-  node_(std::make_shared<{{ cls }}>()),
+    : context_(argc, argv),
+      node_(std::make_shared<{{ cls }}>()),
 {% if executor == "MultiThreadedExecutor" %}
-  executor_(std::make_unique<rclcpp::executors::MultiThreadedExecutor>(rclcpp::ExecutorOptions(), names::kExecutorThreads)) {
+      executor_(binding::make_multi_threaded_executor(names::kExecutorThreads)) {
 {% else %}
-  executor_(std::make_unique<rclcpp::executors::SingleThreadedExecutor>()) {
+      executor_(binding::make_single_threaded_executor()) {
 {% endif %}
   executor_->add_node(node_);
 }
 
 int {{ cls }}App::run() {
   executor_->spin();
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 }  // namespace {{ ns }}

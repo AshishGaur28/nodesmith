@@ -2,18 +2,20 @@
 // IR hash: b38a0259678c01ef7beb38231c50a262057d689c70f2a5d9fae3a503f0d5820b
 #include "gain_node/app.hpp"
 
+#include <cstdlib>
+
 namespace processing {
 
 GainNodeApp::GainNodeApp(int argc, char ** argv)
-: context_(argc, argv),
-  node_(std::make_shared<GainNode>()),
-  executor_(std::make_unique<rclcpp::executors::SingleThreadedExecutor>()) {
+    : context_(argc, argv),
+      node_(std::make_shared<GainNode>()),
+      executor_(binding::make_single_threaded_executor()) {
   executor_->add_node(node_);
 }
 
 int GainNodeApp::run() {
   executor_->spin();
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 }  // namespace processing

@@ -6,25 +6,42 @@
 
 namespace demo {
 
-EchoNodeDiagnostics::EchoNodeDiagnostics(rclcpp::Node & node, EchoNodeEngine & engine) : node_(node), engine_(engine) {
+EchoNodeDiagnostics::EchoNodeDiagnostics(rclcpp::Node & node, EchoNodeEngine & engine)
+    : node_(node), engine_(engine) {
   group_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  pub_ = node_.create_publisher<diagnostic_msgs::msg::DiagnosticArray>(names::kDiagnosticsTopic, rclcpp::QoS(names::kDiagnosticsQosDepth));
-  timer_ = rclcpp::create_timer(&node_, clock_, rclcpp::Duration(std::chrono::seconds(names::kDiagnosticsPeriodS)), [this]() { drain(); }, group_);
+
+  pub_ = node_.create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
+      names::kDiagnosticsTopic, rclcpp::QoS(names::kDiagnosticsQosDepth));
+
+  timer_ = binding::create_timer(
+      node_, clock_, std::chrono::seconds(names::kDiagnosticsPeriodS), [this]() { drain(); },
+      group_);
 }
 
 void EchoNodeDiagnostics::drain() {
+  using diagnostic_msgs::msg::DiagnosticStatus;
+
   diagnostic_msgs::msg::DiagnosticArray array;
+
   engine_.drain_diagnostics([&](r2d::Code code, const char * who) {
-    diagnostic_msgs::msg::DiagnosticStatus status;
-    status.level = code == r2d::Code::ERR_RUN_101 ? diagnostic_msgs::msg::DiagnosticStatus::ERROR : diagnostic_msgs::msg::DiagnosticStatus::WARN;
+    DiagnosticStatus status;
+    status.level = code == r2d::Code::ERR_RUN_101 ? DiagnosticStatus::ERROR
+                                                  : DiagnosticStatus::WARN;
     status.name = node_.get_fully_qualified_name();
     status.message = r2d::code_message(code);
-    diagnostic_msgs::msg::KeyValue c, p;
-    c.key = "code"; c.value = r2d::code_name(code);
-    p.key = "pipeline"; p.value = who ? who : "";
-    status.values = {c, p};
+
+    diagnostic_msgs::msg::KeyValue code_entry;
+    code_entry.key = "code";
+    code_entry.value = r2d::code_name(code);
+
+    diagnostic_msgs::msg::KeyValue pipeline_entry;
+    pipeline_entry.key = "pipeline";
+    pipeline_entry.value = who ? who : "";
+
+    status.values = {code_entry, pipeline_entry};
     array.status.push_back(status);
   });
+
   if (!array.status.empty()) {
     array.header.stamp = node_.now();
     pub_->publish(array);

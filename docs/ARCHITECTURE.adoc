@@ -73,6 +73,7 @@ manifest file → ingest → schema → rules → semantic checks + lowering →
 | interfaces.py | The ROS adapter: publishers, subscriptions, services, timers, and the handlers that call the engine and publish.
 | package.py | Assembles every file of the node package from the templates; writes it atomically.
 | logic.py | The user's functions: `logic_api.hpp`, the weak placeholders, the starter `logic.cpp` and reading the user's `logic/` folder.
+| layout.py | The layout rules of the generated code (100 columns) and the helpers that wrap calls, signatures and expressions to them.
 | naming.py, literals.py | Names, type mappings and C++ literals.
 | templates.py | Where the templates are, and the shared `runtime.hpp`.
 |===
@@ -90,6 +91,7 @@ for the classes and their responsibilities.
 | tests/unit/ | Small pieces: the parser, the evaluator, Python 3.11 compatibility of the source.
 | tests/integration/test_conformance.py | The front end gives the expected IR and errors for every conformance case.
 | tests/integration/test_cpp_semantics.py | Generated pipelines compute what the spec says, on random inputs, against a reference interpreter.
+| tests/integration/test_generated_style.py | Every generated file keeps to the layout rules (100 columns, no trailing whitespace, no double blank lines), and the release-sensitive rclcpp calls appear only in `ros_binding.hpp`.
 | tests/integration/test_engine.py | The engine runs pipelines, guards parameters and collects diagnostics, with no ROS at all.
 | tests/integration/test_cpp_node.py | The generated node behaves correctly against a local stand-in for rclcpp.
 | tests/integration/test_generate.py, tests/golden/ | The generated files equal the checked-in ones, byte for byte.

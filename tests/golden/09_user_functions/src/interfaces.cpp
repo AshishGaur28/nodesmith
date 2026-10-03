@@ -7,38 +7,63 @@
 namespace planning {
 
 namespace {
-[[maybe_unused]] double steady_now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
-[[maybe_unused]] double system_now() { return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(); }
+
+using Seconds = std::chrono::duration<double>;
+
+[[maybe_unused]] double steady_now() {
+  return Seconds(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+[[maybe_unused]] double system_now() {
+  return Seconds(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 }  // namespace
 
-// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is picked up with the node
-// (`automatically_add_to_executor_with_node` defaults to true).
-SpeedPlannerNodeInterfaces::SpeedPlannerNodeInterfaces(rclcpp::Node & node, SpeedPlannerNodeEngine & engine) : node_(node), engine_(engine) {
+// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
+// picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
+SpeedPlannerNodeInterfaces::SpeedPlannerNodeInterfaces(
+    rclcpp::Node & node, SpeedPlannerNodeEngine & engine)
+    : node_(node), engine_(engine) {
   group_state_domain_1_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  pub_label_pub_ = node_.create_publisher<std_msgs::msg::String>(names::kPubTopicLabelPub, rclcpp::QoS(names::kPubQosDepthLabelPub).reliable().durability_volatile());
-  pub_speed_pub_ = node_.create_publisher<std_msgs::msg::Float64>(names::kPubTopicSpeedPub, rclcpp::QoS(names::kPubQosDepthSpeedPub).reliable().durability_volatile());
-  {
-    rclcpp::SubscriptionOptions opts;
-    opts.callback_group = group_state_domain_1_;
-    sub_range_sub_plan_ = node_.create_subscription<std_msgs::msg::Float64>(names::kSubTopicRangeSub, rclcpp::QoS(names::kSubQosDepthRangeSub).reliable().durability_volatile(),
-      [this](std_msgs::msg::Float64::ConstSharedPtr m) { run_plan(*m); }, opts);
-  }
+
+  pub_label_pub_ = node_.create_publisher<std_msgs::msg::String>(
+      names::kPubTopicLabelPub,
+      rclcpp::QoS(names::kPubQosDepthLabelPub).reliable().durability_volatile());
+  pub_speed_pub_ = node_.create_publisher<std_msgs::msg::Float64>(
+      names::kPubTopicSpeedPub,
+      rclcpp::QoS(names::kPubQosDepthSpeedPub).reliable().durability_volatile());
+
+  sub_range_sub_plan_ = binding::create_subscription<std_msgs::msg::Float64>(
+      node_,
+      names::kSubTopicRangeSub,
+      rclcpp::QoS(names::kSubQosDepthRangeSub).reliable().durability_volatile(),
+      [this](std_msgs::msg::Float64::ConstSharedPtr msg) { run_plan(*msg); },
+      group_state_domain_1_);
 }
 
-void SpeedPlannerNodeInterfaces::start() {
-}
+void SpeedPlannerNodeInterfaces::start() {}
 
 void SpeedPlannerNodeInterfaces::run_plan(const std_msgs::msg::Float64 & in) {
   const auto run = engine_.enter();
-  if (!run) { return; }
+  if (!run) {
+    return;
+  }
+
   const auto result = engine_.run_plan(run, in);
-  if (!result) { return; }  // a numeric fault was reported by the engine (SPEC-02 §7 step 6)
+  if (!result) {
+    // A numeric fault: the engine reported it (SPEC-02 section 7, step 6).
+    return;
+  }
+
   [[maybe_unused]] const auto & r = *result;
+
   {
     std_msgs::msg::String out{};  // value-initialised
     out.data = r.out__label_pub__data;
     pub_label_pub_->publish(out);
   }
+
   {
     std_msgs::msg::Float64 out{};  // value-initialised
     out.data = r.out__speed_pub__data;

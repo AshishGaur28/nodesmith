@@ -14,6 +14,7 @@ import math
 from . import names
 from .dag import DagEmitter
 from .errors import Unsupported
+from .layout import assign, call
 from .literals import cpp_string, literal, value_literal
 from .naming import cpp_type, member
 
@@ -71,9 +72,14 @@ def _reject(text: str) -> str:
     return f"return std::string({cpp_string(text)});"
 
 
+def _guard(condition: str, text: str) -> str:
+    """``if (condition) { return reason; }`` over three lines."""
+    return f"if ({condition}) {{\n  {_reject(text)}\n}}"
+
+
 def validation_checks(parameter: dict) -> list[str]:
     """The C++ statements of ``validate()`` for one parameter; each returns the reason on failure
-    (SPEC-07 section 3.1, step 2)."""
+    (SPEC-07 section 3.1, step 2). Every statement is a few lines, with the first at indent 0."""
     name, type_ = parameter["name"], parameter["canonical_type"]
     rules = parameter.get("validation", {})
     value = f"p.{member(name)}"
@@ -87,36 +93,41 @@ def validation_checks(parameter: dict) -> list[str]:
             conditions.append(f"{value} <= {_bound(type_, rules['max'])}")
         low, high = rules.get("min", "-inf"), rules.get("max", "inf")
         message = f"{quoted} out of range [{low}, {high}]"
-        checks.append(f"if (!({' && '.join(conditions)})) {_reject(message)}")
+        checks.append(_guard(f"!({' && '.join(conditions)})", message))
     if "step" in rules:
         base, step = float(rules.get("min", 0)), float(rules["step"])
         misaligned = (
             f"std::fabs(std::remainder(static_cast<double>({value}) - {base!r}, {step!r})) > 1e-9"
         )
         message = f"{quoted} is not a multiple of step {rules['step']}"
-        checks.append(f"if ({misaligned}) {_reject(message)}")
+        checks.append(_guard(misaligned, message))
     if "one_of" in rules:
-        options = " || ".join(
+        options = [
             f"{value} == {literal(x, 'string' if isinstance(x, str) else 'int64')}"
             for x in rules["one_of"]
-        )
+        ]
         message = f"{quoted} must be one of " + ", ".join(map(str, rules["one_of"]))
-        checks.append(f"if (!({options})) {_reject(message)}")
+        checks.append(_guard("!(" + " ||\n      ".join(options) + ")", message))
     if "fixed_length" in rules:
         message = f"{quoted} must have exactly {rules['fixed_length']} elements"
-        checks.append(f"if ({value}.size() != {rules['fixed_length']}) {_reject(message)}")
+        checks.append(_guard(f"{value}.size() != {rules['fixed_length']}", message))
     if "regex" in rules:
         checks.append(_regex_check(value, rules["regex"], quoted))
     return checks
 
 
 def _regex_check(value: str, pattern: str, quoted: str) -> str:
-    matches = (
-        f"static const std::regex re({cpp_string(pattern)}); if (!std::regex_match({value}, re))"
-    )
-    return (
-        f"try {{ {matches} {_reject(f'{quoted} does not match its regex')} }} "
-        f"catch (const std::regex_error &) {{ {_reject(f'{quoted} has an invalid regex')} }}"
+    return "\n".join(
+        [
+            "try {",
+            f"  static const std::regex re({cpp_string(pattern)});",
+            f"  if (!std::regex_match({value}, re)) {{",
+            f"    {_reject(f'{quoted} does not match its regex')}",
+            "  }",
+            "} catch (const std::regex_error &) {",
+            f"  {_reject(f'{quoted} has an invalid regex')}",
+            "}",
+        ]
     )
 
 
@@ -137,16 +148,19 @@ def constraint_functions(ir: dict) -> list[dict]:
         labelled = {node["id"] for node in dag["nodes"] if "label" in node}
         emitter.materialized = labelled | {root}
         lines = [
-            f"const {cpp_type(emitter.nodes[nid]['type_symbol'])} {emitter.local_name(nid)} = "
-            f"{emitter.expression(nid)};"
+            assign(
+                f"const {cpp_type(emitter.nodes[nid]['type_symbol'])} {emitter.local_name(nid)}",
+                emitter.expression(nid),
+                "  ",
+            )
             for nid in (node["id"] for node in dag["nodes"])
             if nid in emitter.materialized
         ]
-        lines.append(f"return {emitter.local_name(root)};")
+        lines += ["", f"  return {emitter.local_name(root)};"]
         default_message = f"parameter_constraints[{index}] is violated"
         functions.append(
             {
-                "body": "\n  ".join(lines),
+                "body": "\n".join(lines),
                 "message": cpp_string(constraint.get("message") or default_message),
                 "fault_message": cpp_string(
                     f"parameter_constraints[{index}] faulted on the new values"
@@ -194,39 +208,54 @@ def _descriptor_lines(parameter: dict, descriptor: str) -> list[str]:
 
 def declaration_lines(parameters: list[dict]) -> list[str]:
     """The body of the parameters adapter's constructor up to the declarations: one descriptor and
-    one declaration per parameter, collected into ``Params initial`` (``node`` is the ROS node)."""
-    lines = ["Params initial;  // effective values include launch-file and command-line overrides"]
+    one declaration per parameter, collected into ``Params initial`` (``node`` is the ROS node).
+    Each statement may span several lines; a blank line separates the parameters."""
+    lines = [
+        "// The effective values include launch-file and command-line overrides.",
+        "Params initial;",
+    ]
     for parameter in parameters:
         name, type_ = parameter["name"], parameter["canonical_type"]
         target, ros_type = member(name), ROS_PARAMETER_TYPE[type_]
         descriptor = f"d_{target}"
-        lines += _descriptor_lines(parameter, descriptor)
         default = value_literal(type_, parameter["default_value"])
         if _is_array(type_):
             initial = f"{ros_type}({default})"
         else:
             initial = f"static_cast<{ros_type}>({default})"
-        declared = (
-            f"node.declare_parameter<{ros_type}>({names.parameter(name)}, {initial}, {descriptor})"
+        lines += ["", *_descriptor_lines(parameter, descriptor)]
+        lines += _store_declared(
+            target, type_, ros_type, [names.parameter(name), initial, descriptor], name
         )
-        lines += _store_declared(target, type_, declared, name)
     return lines
 
 
-def _store_declared(target: str, type_: str, declared: str, name: str) -> list[str]:
-    """Statements storing a declared value in ``initial``, converting to the canonical type."""
+def _store_declared(
+    target: str, type_: str, ros_type: str, arguments: list[str], name: str
+) -> list[str]:
+    """Statements declaring one parameter and storing its value in ``initial``, converting ROS's
+    64-bit integers and doubles to the canonical type."""
+    head = f"node.declare_parameter<{ros_type}>("
     if type_ == "int32":  # ROS parameters are 64-bit: refuse a value outside int32
         why = cpp_string(f"{name!r} is outside the int32 range")
         return [
             "{",
-            "  bool f = false;",
-            f"  initial.{target} = r2d::to_int<std::int32_t>({declared}, f);",
-            f"  if (f) throw rclcpp::exceptions::InvalidParameterValueException({why});",
+            call(f"const {ros_type} declared = {head}", arguments, ");", "  "),
+            "  bool out_of_range = false;",
+            f"  initial.{target} = r2d::to_int<std::int32_t>(declared, out_of_range);",
+            "  if (out_of_range) {",
+            f"    throw rclcpp::exceptions::InvalidParameterValueException({why});",
+            "  }",
             "}",
         ]
     if type_ == "float32":
-        return [f"initial.{target} = static_cast<float>({declared});"]
-    return [f"initial.{target} = {declared};"]
+        return [
+            "{",
+            call(f"const {ros_type} declared = {head}", arguments, ");", "  "),
+            f"  initial.{target} = static_cast<float>(declared);",
+            "}",
+        ]
+    return [call(f"initial.{target} = {head}", arguments, ");")]
 
 
 # ------------------------------------------------------------------------------ update
@@ -290,8 +319,9 @@ def params_yaml(ir: dict) -> str:
     ``/**`` matches the node under any name or namespace. Empty arrays are left as comments,
     because YAML cannot say which element type an empty list has."""
     lines = [
-        "# Generated by nodesmith. Parameter values of the node, as `ros2 run ... --ros-args --params-file` reads them.",
-        "# These are the manifest defaults: copy this file, change values, and pass the copy; no rebuild is needed.",
+        "# Generated by nodesmith: the node's parameters with their manifest defaults, in the format",
+        "# of `--ros-args --params-file`. Copy this file, change values and pass the copy to the",
+        "# node (or to the launch file); no rebuild is needed.",
         "/**:",
         "  ros__parameters:",
     ]

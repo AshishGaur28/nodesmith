@@ -2,18 +2,20 @@
 // IR hash: cf473c6f24952073b0ad5f7ea6769da29b35ab9137f76e035719b2da74a0dfe8
 #include "counter_node/app.hpp"
 
+#include <cstdlib>
+
 namespace demo {
 
 CounterNodeApp::CounterNodeApp(int argc, char ** argv)
-: context_(argc, argv),
-  node_(std::make_shared<CounterNode>()),
-  executor_(std::make_unique<rclcpp::executors::SingleThreadedExecutor>()) {
+    : context_(argc, argv),
+      node_(std::make_shared<CounterNode>()),
+      executor_(binding::make_single_threaded_executor()) {
   executor_->add_node(node_);
 }
 
 int CounterNodeApp::run() {
   executor_->spin();
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 }  // namespace demo

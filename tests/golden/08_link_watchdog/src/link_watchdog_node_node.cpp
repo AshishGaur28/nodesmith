@@ -5,12 +5,15 @@
 namespace monitoring {
 
 LinkWatchdogNode::LinkWatchdogNode(const rclcpp::NodeOptions & options)
-: Node(names::kNodeName, names::kNodeNamespace, options),
-  parameters_(*this, engine_),
-  interfaces_(*this, engine_),
-  diagnostics_(*this, engine_) {
-  engine_.open();  // a non-lifecycle node is active once constructed (SPEC-12 §6)
-  interfaces_.start();  // startup pipelines run once, after the node is operational (SPEC-02 §7)
+    : Node(names::kNodeName, names::kNodeNamespace, options),
+      parameters_(*this, engine_),
+      interfaces_(*this, engine_),
+      diagnostics_(*this, engine_) {
+  // A non-lifecycle node is active once constructed (SPEC-12 section 6).
+  engine_.open();
+
+  // Startup pipelines run once, after the node is operational (SPEC-02 section 7).
+  interfaces_.start();
 }
 
 }  // namespace monitoring

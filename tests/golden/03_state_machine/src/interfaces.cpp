@@ -7,41 +7,92 @@
 namespace demo {
 
 namespace {
-[[maybe_unused]] double steady_now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
-[[maybe_unused]] double system_now() { return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(); }
+
+using Seconds = std::chrono::duration<double>;
+
+[[maybe_unused]] double steady_now() {
+  return Seconds(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+[[maybe_unused]] double system_now() {
+  return Seconds(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 }  // namespace
 
-// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is picked up with the node
-// (`automatically_add_to_executor_with_node` defaults to true).
-CounterNodeInterfaces::CounterNodeInterfaces(rclcpp::Node & node, CounterNodeEngine & engine) : node_(node), engine_(engine) {
+// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
+// picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
+CounterNodeInterfaces::CounterNodeInterfaces(rclcpp::Node & node, CounterNodeEngine & engine)
+    : node_(node), engine_(engine) {
   group_state_domain_1_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  pub_count_pub_ = node_.create_publisher<std_msgs::msg::Int64>(names::kPubTopicCountPub, rclcpp::QoS(names::kPubQosDepthCountPub).reliable().durability_volatile());
-  srv_reset_srv_ = node_.create_service<std_srvs::srv::Trigger>(names::kServiceNameResetSrv, [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> req, std::shared_ptr<std_srvs::srv::Trigger::Response> res) { run_reset(*req, *res); }, rclcpp::ServicesQoS(), group_state_domain_1_);
-  timer_tick_ = rclcpp::create_timer(&node_, node_.get_clock(), rclcpp::Duration(std::chrono::milliseconds(names::kPeriodMsTick)), [this]() { run_tick(); }, group_state_domain_1_);
+
+  pub_count_pub_ = node_.create_publisher<std_msgs::msg::Int64>(
+      names::kPubTopicCountPub,
+      rclcpp::QoS(names::kPubQosDepthCountPub).reliable().durability_volatile());
+
+  srv_reset_srv_ = binding::create_service<std_srvs::srv::Trigger>(
+      node_,
+      names::kServiceNameResetSrv,
+      [this](
+          const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+          std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+        run_reset(*request, *response);
+      },
+      group_state_domain_1_);
+
+  timer_tick_ = binding::create_timer(
+      node_,
+      node_.get_clock(),
+      std::chrono::milliseconds(names::kPeriodMsTick),
+      [this]() { run_tick(); },
+      group_state_domain_1_);
 }
 
-void CounterNodeInterfaces::start() {
-}
+void CounterNodeInterfaces::start() {}
 
-void CounterNodeInterfaces::run_reset(const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res) {
+void CounterNodeInterfaces::run_reset(
+    const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res) {
   const auto run = engine_.enter();
-  if (!run) { res = std_srvs::srv::Trigger::Response(); return; }
+  if (!run) {
+    res = std_srvs::srv::Trigger::Response();
+    return;
+  }
+
   const auto result = engine_.run_reset(run, in);
-  if (!result) { res = std_srvs::srv::Trigger::Response(); return; }  // a numeric fault was reported by the engine (SPEC-02 §7 step 6)
+  if (!result) {
+    // A numeric fault: the engine reported it (SPEC-02 section 7, step 6).
+    res = std_srvs::srv::Trigger::Response();
+    return;
+  }
+
   [[maybe_unused]] const auto & r = *result;
+
   res = std_srvs::srv::Trigger::Response();
   res.message = r.out__res__message;
   res.success = r.out__res__success;
 }
 
 void CounterNodeInterfaces::run_tick() {
-  if (busy_tick_.exchange(true)) { engine_.report(r2d::Code::ERR_RUN_102, names::kPipelineTick); return; }
-  struct BusyGuard { std::atomic<bool> & b; ~BusyGuard() { b.store(false); } } busy_guard{busy_tick_};
+  // A firing while the previous execution still runs is skipped (ERR_RUN_102).
+  r2d::BusyGuard busy(busy_tick_);
+  if (!busy) {
+    engine_.report(r2d::Code::ERR_RUN_102, names::kPipelineTick);
+    return;
+  }
+
   const auto run = engine_.enter();
-  if (!run) { return; }
+  if (!run) {
+    return;
+  }
+
   const auto result = engine_.run_tick(run);
-  if (!result) { return; }  // a numeric fault was reported by the engine (SPEC-02 §7 step 6)
+  if (!result) {
+    // A numeric fault: the engine reported it (SPEC-02 section 7, step 6).
+    return;
+  }
+
   [[maybe_unused]] const auto & r = *result;
+
   {
     std_msgs::msg::Int64 out{};  // value-initialised
     out.data = static_cast<std::int64_t>(r.out__count_pub__data);

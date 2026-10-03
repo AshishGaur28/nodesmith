@@ -8,33 +8,45 @@
 
 namespace demo {
 
-EchoNodeParameters::EchoNodeParameters(rclcpp::Node & node, EchoNodeEngine & engine) : engine_(engine) {
-  Params initial;  // effective values include launch-file and command-line overrides
+EchoNodeParameters::EchoNodeParameters(rclcpp::Node & node, EchoNodeEngine & engine)
+    : engine_(engine) {
+  // The effective values include launch-file and command-line overrides.
+  Params initial;
+
   if (auto why = engine_.start(initial)) {
     throw rclcpp::exceptions::InvalidParameterValueException(*why);  // refuse to start
   }
-  handle_ = node.add_on_set_parameters_callback(
-    [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
+
+  handle_ = binding::add_parameter_callback(
+      node, [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
 }
 
-// Runs on the parameter-service thread, concurrently with the pipelines. It never touches state and never blocks a pipeline:
-// the engine builds a whole new snapshot and swaps it in (SPEC-07 §3.1, SPEC-12 §5).
-rcl_interfaces::msg::SetParametersResult EchoNodeParameters::on_set(const std::vector<rclcpp::Parameter> & updates) {
+// Runs on the parameter-service thread, concurrently with the pipelines. It never touches state
+// and never blocks a pipeline: the engine builds a whole new snapshot and swaps it in
+// (SPEC-07 section 3.1, SPEC-12 section 5).
+rcl_interfaces::msg::SetParametersResult EchoNodeParameters::on_set(
+    const std::vector<rclcpp::Parameter> & updates) {
   auto reject = [this](std::string why) {
     engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);
-    rcl_interfaces::msg::SetParametersResult r;
-    r.successful = false;
-    r.reason = std::move(why);
-    return r;
+    rcl_interfaces::msg::SetParametersResult result;
+    result.successful = false;
+    result.reason = std::move(why);
+    return result;
   };
+
   Params next = engine_.parameters();
   for (const auto & p : updates) {
     [[maybe_unused]] const std::string & name = p.get_name();
   }
-  if (auto why = engine_.update(next)) return reject(*why);  // the whole batch is rejected, nothing is published
-  rcl_interfaces::msg::SetParametersResult ok;
-  ok.successful = true;
-  return ok;
+
+  // The whole batch is rejected, or nothing is published.
+  if (auto why = engine_.update(next)) {
+    return reject(*why);
+  }
+
+  rcl_interfaces::msg::SetParametersResult accepted;
+  accepted.successful = true;
+  return accepted;
 }
 
 }  // namespace demo

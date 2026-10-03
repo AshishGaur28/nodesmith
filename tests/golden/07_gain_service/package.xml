@@ -2,7 +2,8 @@
 <package format="3">
   <name>gain_node</name>
   <version>1.0.0</version>
-  <description>Scales an input value by a gain that is set and read through services.</description>
+  <description>Scales an input value by a gain that is set and read through
+    services.</description>
   <maintainer email="todo@example.com">TODO</maintainer>
   <license>TODO</license>
 

@@ -11,6 +11,7 @@ gate, asks the engine to evaluate the pipeline and publishes what the engine ret
 
 from . import names
 from .dag import Assignment, PipelineInfo
+from .layout import call, signature
 from .naming import ROS_CPP_TYPE, message_cpp
 
 _CLOCK_MEMBER = {"steady": "clock_steady_", "system": "clock_system_", "ros": "node_.get_clock()"}
@@ -59,8 +60,10 @@ class InterfacesBuilder:
         for group in self.ir["concurrency"]["callback_groups"]:
             self.members.append(f"rclcpp::CallbackGroup::SharedPtr group_{group['name']}_;")
             self.creates.append(
-                f"group_{group['name']}_ = node_.create_callback_group("
-                f"rclcpp::CallbackGroupType::{group['type']});"
+                call(
+                    f"group_{group['name']}_ = node_.create_callback_group(",
+                    [f"rclcpp::CallbackGroupType::{group['type']}"],
+                )
             )
 
     def _publishers(self) -> None:
@@ -68,9 +71,13 @@ class InterfacesBuilder:
             type_ = message_cpp(publisher["type_symbol"])
             self.members.append(f"rclcpp::Publisher<{type_}>::SharedPtr pub_{identifier}_;")
             qos = qos_expression(publisher["qos"], names.pub_depth(identifier))
+            if identifier == next(iter(self.publishers)):
+                self.creates.append("")
             self.creates.append(
-                f"pub_{identifier}_ = node_.create_publisher<{type_}>("
-                f"{names.pub_topic(identifier)}, {qos});"
+                call(
+                    f"pub_{identifier}_ = node_.create_publisher<{type_}>(",
+                    [names.pub_topic(identifier), qos],
+                )
             )
 
     def _pipeline_trigger(self, pipeline: PipelineInfo) -> None:
@@ -88,7 +95,7 @@ class InterfacesBuilder:
         elif kind == "timer":
             self._timer(name, trigger, group)
         else:  # startup
-            self.methods.append(f"void run_{name}();")
+            self.methods.append(f"  void run_{name}();")
 
     def _subscription(self, pipeline: str, source: str, group: str) -> None:
         subscriber = self.subscribers[source]
@@ -96,43 +103,59 @@ class InterfacesBuilder:
         member_name = f"sub_{source}_{pipeline}_"
         qos = qos_expression(subscriber["qos"], names.sub_depth(source))
         self.members.append(f"rclcpp::Subscription<{type_}>::SharedPtr {member_name};")
+        callback = f"[this]({type_}::ConstSharedPtr msg) {{ run_{pipeline}(*msg); }}"
         self.creates += [
-            "{",
-            "  rclcpp::SubscriptionOptions opts;",
-            f"  opts.callback_group = group_{group}_;",
-            f"  {member_name} = node_.create_subscription<{type_}>({names.sub_topic(source)}, {qos},",
-            f"    [this]({type_}::ConstSharedPtr m) {{ run_{pipeline}(*m); }}, opts);",
-            "}",
+            "",
+            call(
+                f"{member_name} = binding::create_subscription<{type_}>(",
+                ["node_", names.sub_topic(source), qos, callback, f"group_{group}_"],
+            ),
         ]
-        self.methods.append(f"void run_{pipeline}(const {type_} & in);")
+        self.methods.append(signature(f"void run_{pipeline}(", [f"const {type_} & in"], ";", "  "))
 
     def _service(self, pipeline: str, source: str, group: str) -> None:
         type_ = message_cpp(self.services[source]["type_symbol"])
         self.members.append(f"rclcpp::Service<{type_}>::SharedPtr srv_{source}_;")
-        callback = (
-            f"[this](const std::shared_ptr<{type_}::Request> req, "
-            f"std::shared_ptr<{type_}::Response> res) {{ run_{pipeline}(*req, *res); }}"
+        callback = "\n".join(
+            [
+                "[this](",
+                f"    const std::shared_ptr<{type_}::Request> request,",
+                f"    std::shared_ptr<{type_}::Response> response) {{",
+                f"  run_{pipeline}(*request, *response);",
+                "}",
+            ]
         )
-        self.creates.append(
-            f"srv_{source}_ = node_.create_service<{type_}>({names.service_name(source)}, "
-            f"{callback}, rclcpp::ServicesQoS(), group_{group}_);"
-        )
+        self.creates += [
+            "",
+            call(
+                f"srv_{source}_ = binding::create_service<{type_}>(",
+                ["node_", names.service_name(source), callback, f"group_{group}_"],
+            ),
+        ]
         self.methods.append(
-            f"void run_{pipeline}(const {type_}::Request & in, {type_}::Response & res);"
+            signature(
+                f"void run_{pipeline}(",
+                [f"const {type_}::Request & in", f"{type_}::Response & res"],
+                ";",
+                "  ",
+            )
         )
 
     def _timer(self, pipeline: str, trigger: dict, group: str) -> None:
         clock = _CLOCK_MEMBER[trigger["clock"]]
-        period = f"rclcpp::Duration(std::chrono::milliseconds({names.period_ms(pipeline)}))"
+        period = f"std::chrono::milliseconds({names.period_ms(pipeline)})"
         self.members += [
             f"rclcpp::TimerBase::SharedPtr timer_{pipeline}_;",
             f"std::atomic<bool> busy_{pipeline}_{{false}};",
         ]
-        self.creates.append(
-            f"timer_{pipeline}_ = rclcpp::create_timer(&node_, {clock}, {period}, "
-            f"[this]() {{ run_{pipeline}(); }}, group_{group}_);"
-        )
-        self.methods.append(f"void run_{pipeline}();")
+        self.creates += [
+            "",
+            call(
+                f"timer_{pipeline}_ = binding::create_timer(",
+                ["node_", clock, period, f"[this]() {{ run_{pipeline}(); }}", f"group_{group}_"],
+            ),
+        ]
+        self.methods.append(f"  void run_{pipeline}();")
 
     def _clocks(self) -> None:
         timer_clocks = {p.trigger["clock"] for p in self.pipelines if p.trigger["kind"] == "timer"}
@@ -153,24 +176,35 @@ class InterfacesBuilder:
     def _run_method(self, class_name: str, pipeline: PipelineInfo) -> str:
         name, kind = pipeline.name, pipeline.trigger["kind"]
         response = f"{message_cpp(pipeline.input_type)}::Response" if kind == "service" else None
-        reset_response = f" res = {response}();" if response else ""
-        call = ["run"]
+        reset_response = [f"    res = {response}();"] if response else []
+        call_arguments = ["run"]
         if kind in ("subscriber", "service"):
-            call.append("in")
+            call_arguments.append("in")
         if pipeline.uses_now:
-            call.append("now_sec")
-        lines = [f"void {class_name}::run_{name}({_run_signature(pipeline)}) {{"]
+            call_arguments.append("now_sec")
+        lines = [signature(f"void {class_name}::run_{name}(", _run_parameters(pipeline))]
         if kind == "timer":
-            lines += _timer_overrun_guard(name)
-        lines += [
-            "  const auto run = engine_.enter();",
-            f"  if (!run) {{{reset_response} return; }}",
-        ]
+            lines += [
+                "  // A firing while the previous execution still runs is skipped (ERR_RUN_102).",
+                f"  r2d::BusyGuard busy(busy_{name}_);",
+                "  if (!busy) {",
+                f"    engine_.report(r2d::Code::ERR_RUN_102, {names.pipeline(name)});",
+                "    return;",
+                "  }",
+                "",
+            ]
+        lines += ["  const auto run = engine_.enter();", "  if (!run) {", *reset_response]
+        lines += ["    return;", "  }", ""]
         if pipeline.uses_now:
             lines.append(f"  const double now_sec = {_clock_now(pipeline)};")
         lines += [
-            f"  const auto result = engine_.run_{name}({', '.join(call)});",
-            f"  if (!result) {{{reset_response} return; }}  // a numeric fault was reported by the engine (SPEC-02 §7 step 6)",
+            call(f"const auto result = engine_.run_{name}(", call_arguments, ");", "  "),
+            "  if (!result) {",
+            "    // A numeric fault: the engine reported it (SPEC-02 section 7, step 6).",
+            *reset_response,
+            "    return;",
+            "  }",
+            "",
             "  [[maybe_unused]] const auto & r = *result;",
         ]
         lines += self._publish_lines(pipeline, response)
@@ -186,14 +220,14 @@ class InterfacesBuilder:
         lines = []
         for target in sorted(by_target):
             if target == "res":
-                lines.append(f"  res = {response}();")
+                lines += ["", f"  res = {response}();"]
                 lines += [
                     f"  {_assign_field(a, 'res.' + a.path, 'r.' + a.member)}"
                     for a in by_target[target]
                 ]
             else:
                 message = message_cpp(self.publishers[target]["type_symbol"])
-                lines += ["  {", f"    {message} out{{}};  // value-initialised"]
+                lines += ["", "  {", f"    {message} out{{}};  // value-initialised"]
                 lines += [
                     f"    {_assign_field(a, 'out.' + a.path, 'r.' + a.member)}"
                     for a in by_target[target]
@@ -202,22 +236,14 @@ class InterfacesBuilder:
         return lines
 
 
-def _run_signature(pipeline: PipelineInfo) -> str:
+def _run_parameters(pipeline: PipelineInfo) -> list[str]:
     kind = pipeline.trigger["kind"]
     if kind == "subscriber":
-        return f"const {message_cpp(pipeline.input_type)} & in"
+        return [f"const {message_cpp(pipeline.input_type)} & in"]
     if kind == "service":
         service = message_cpp(pipeline.input_type)
-        return f"const {service}::Request & in, {service}::Response & res"
-    return ""
-
-
-def _timer_overrun_guard(name: str) -> list[str]:
-    """A timer firing while the previous execution still runs is skipped (``ERR_RUN_102``)."""
-    return [
-        f"  if (busy_{name}_.exchange(true)) {{ engine_.report(r2d::Code::ERR_RUN_102, {names.pipeline(name)}); return; }}",
-        f"  struct BusyGuard {{ std::atomic<bool> & b; ~BusyGuard() {{ b.store(false); }} }} busy_guard{{busy_{name}_}};",
-    ]
+        return [f"const {service}::Request & in", f"{service}::Response & res"]
+    return []
 
 
 def _clock_now(pipeline: PipelineInfo) -> str:

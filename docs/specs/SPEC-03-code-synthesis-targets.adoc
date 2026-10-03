@@ -123,6 +123,7 @@ Generated C++ packages adhere strictly to `ament_cmake` standards:
 │       ├── engine.hpp         # the engine: parameter snapshots, state, run gate, diagnostics ring, run_<pipeline>(): no ROS
 │       ├── runtime.hpp        # SnapshotRing, RunGate (SPEC-12) + numeric helpers and DiagRing: no ROS
 │       ├── logic_api.hpp      # the functions the user writes, only when the manifest declares functions (§4.4)
+│       ├── ros_binding.hpp    # the only file that calls the release-sensitive rclcpp API (§4.6)
 │       ├── interfaces.hpp     # ROS adapter: publishers, subscriptions, services, timers
 │       ├── parameters.hpp     # ROS adapter: parameter declaration and updates
 │       ├── diagnostics.hpp    # ROS adapter: publishes the diagnostics ring
@@ -143,6 +144,7 @@ The classes and their single responsibilities (the dependency points one way, fr
 |===
 | Class | Responsibility
 | `<Node>Engine` | The ROS-free core. Owns the parameter snapshots, the state, the run gate and the diagnostics ring; evaluates a pipeline, commits its state and returns the outputs. Never publishes.
+| `binding` (`ros_binding.hpp`) | The release-sensitive rclcpp calls, in one replaceable file (§4.6). Not a class: free functions the adapters call.
 | `<Node>Interfaces` | Creates the publishers, subscriptions, services and timers; for each trigger enters the gate, calls the engine and publishes what it returns.
 | `<Node>Parameters` | Declares the ROS parameters and forwards every update to the engine, which validates it.
 | `<Node>Diagnostics` | Publishes the engine's diagnostics ring on its own timer.
@@ -151,6 +153,16 @@ The classes and their single responsibilities (the dependency points one way, fr
 |===
 
 Topics, services, QoS depths, timer periods, parameter names and pipeline names appear once, as constants in `interface_names.hpp`; the other files refer to them.
+
+==== Layout
+
+Generated files are meant to be read. No line is longer than 100 columns, there is no trailing whitespace, and related statements are separated by blank lines (declarations, checks and assignments inside a pipeline; the creation of each publisher, subscription, service and timer; each parameter's declaration). A long call is wrapped with its arguments on one continuation line, or one per line if they do not fit. The one exception is a formula that inlines into a single long expression, which is broken only at its outermost `?`, `:`, `&&` and `||`. The rules live in `layout.py` and are enforced for every example by `tests/integration/test_generated_style.py`.
+
+=== 4.6. ROS Release Binding
+
+Everything in the generated code that has changed, or could change, between ROS 2 releases is called through the `binding` namespace of `include/<node_name>/ros_binding.hpp`: process start and stop (`init`, `shutdown`), executor creation, `create_subscription`, `create_service`, `create_timer` and the parameter callback (`add_parameter_callback`, `ParameterCallbackHandle`). The adapters, the node and the application call these and never the rclcpp function directly; `tests/integration/test_generated_style.py` fails if a generated file other than `ros_binding.hpp` does.
+
+The file is identical in every package and is the implementation for ROS 2 Jazzy, the only release verified so far. Supporting another release means changing that one file (a replacement, or a branch on `RCLCPP_VERSION_MAJOR` from `<rclcpp/version.h>`): the engine, the adapters, `main()` and the user's `logic/` stay as they are, and a package generated with this layout needs no regeneration. To add a release, build the example nodes on that release's image and change only what fails to compile or behave. The binding covers API signatures; it cannot hide a change in behaviour, such as a default QoS or middleware difference, which has to be found by running the examples.
 
 === 4.2. Memory & Real-Time Guarantees
 * **Pre-allocation:** All buffers, QoS profiles, subscriber/publisher handles, state objects and callback groups MUST be created during node initialization (constructor, or `on_configure` for lifecycle nodes, `SPEC-05`) and never inside a callback.

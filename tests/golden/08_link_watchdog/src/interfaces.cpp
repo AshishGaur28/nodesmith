@@ -7,23 +7,46 @@
 namespace monitoring {
 
 namespace {
-[[maybe_unused]] double steady_now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
-[[maybe_unused]] double system_now() { return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(); }
+
+using Seconds = std::chrono::duration<double>;
+
+[[maybe_unused]] double steady_now() {
+  return Seconds(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+[[maybe_unused]] double system_now() {
+  return Seconds(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 }  // namespace
 
-// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is picked up with the node
-// (`automatically_add_to_executor_with_node` defaults to true).
-LinkWatchdogNodeInterfaces::LinkWatchdogNodeInterfaces(rclcpp::Node & node, LinkWatchdogNodeEngine & engine) : node_(node), engine_(engine) {
+// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
+// picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
+LinkWatchdogNodeInterfaces::LinkWatchdogNodeInterfaces(
+    rclcpp::Node & node, LinkWatchdogNodeEngine & engine)
+    : node_(node), engine_(engine) {
   group_state_domain_1_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  pub_age_pub_ = node_.create_publisher<std_msgs::msg::Float64>(names::kPubTopicAgePub, rclcpp::QoS(names::kPubQosDepthAgePub).reliable().durability_volatile());
-  pub_alive_pub_ = node_.create_publisher<std_msgs::msg::Bool>(names::kPubTopicAlivePub, rclcpp::QoS(names::kPubQosDepthAlivePub).reliable().durability_volatile());
-  timer_check_link_ = rclcpp::create_timer(&node_, clock_steady_, rclcpp::Duration(std::chrono::milliseconds(names::kPeriodMsCheckLink)), [this]() { run_check_link(); }, group_state_domain_1_);
-  {
-    rclcpp::SubscriptionOptions opts;
-    opts.callback_group = group_state_domain_1_;
-    sub_heartbeat_sub_on_heartbeat_ = node_.create_subscription<std_msgs::msg::Empty>(names::kSubTopicHeartbeatSub, rclcpp::QoS(names::kSubQosDepthHeartbeatSub).reliable().durability_volatile(),
-      [this](std_msgs::msg::Empty::ConstSharedPtr m) { run_on_heartbeat(*m); }, opts);
-  }
+
+  pub_age_pub_ = node_.create_publisher<std_msgs::msg::Float64>(
+      names::kPubTopicAgePub,
+      rclcpp::QoS(names::kPubQosDepthAgePub).reliable().durability_volatile());
+  pub_alive_pub_ = node_.create_publisher<std_msgs::msg::Bool>(
+      names::kPubTopicAlivePub,
+      rclcpp::QoS(names::kPubQosDepthAlivePub).reliable().durability_volatile());
+
+  timer_check_link_ = binding::create_timer(
+      node_,
+      clock_steady_,
+      std::chrono::milliseconds(names::kPeriodMsCheckLink),
+      [this]() { run_check_link(); },
+      group_state_domain_1_);
+
+  sub_heartbeat_sub_on_heartbeat_ = binding::create_subscription<std_msgs::msg::Empty>(
+      node_,
+      names::kSubTopicHeartbeatSub,
+      rclcpp::QoS(names::kSubQosDepthHeartbeatSub).reliable().durability_volatile(),
+      [this](std_msgs::msg::Empty::ConstSharedPtr msg) { run_on_heartbeat(*msg); },
+      group_state_domain_1_);
 }
 
 void LinkWatchdogNodeInterfaces::start() {
@@ -32,27 +55,48 @@ void LinkWatchdogNodeInterfaces::start() {
 
 void LinkWatchdogNodeInterfaces::run_boot() {
   const auto run = engine_.enter();
-  if (!run) { return; }
+  if (!run) {
+    return;
+  }
+
   const double now_sec = steady_now();
   const auto result = engine_.run_boot(run, now_sec);
-  if (!result) { return; }  // a numeric fault was reported by the engine (SPEC-02 §7 step 6)
+  if (!result) {
+    // A numeric fault: the engine reported it (SPEC-02 section 7, step 6).
+    return;
+  }
+
   [[maybe_unused]] const auto & r = *result;
 }
 
 void LinkWatchdogNodeInterfaces::run_check_link() {
-  if (busy_check_link_.exchange(true)) { engine_.report(r2d::Code::ERR_RUN_102, names::kPipelineCheckLink); return; }
-  struct BusyGuard { std::atomic<bool> & b; ~BusyGuard() { b.store(false); } } busy_guard{busy_check_link_};
+  // A firing while the previous execution still runs is skipped (ERR_RUN_102).
+  r2d::BusyGuard busy(busy_check_link_);
+  if (!busy) {
+    engine_.report(r2d::Code::ERR_RUN_102, names::kPipelineCheckLink);
+    return;
+  }
+
   const auto run = engine_.enter();
-  if (!run) { return; }
+  if (!run) {
+    return;
+  }
+
   const double now_sec = steady_now();
   const auto result = engine_.run_check_link(run, now_sec);
-  if (!result) { return; }  // a numeric fault was reported by the engine (SPEC-02 §7 step 6)
+  if (!result) {
+    // A numeric fault: the engine reported it (SPEC-02 section 7, step 6).
+    return;
+  }
+
   [[maybe_unused]] const auto & r = *result;
+
   {
     std_msgs::msg::Float64 out{};  // value-initialised
     out.data = r.out__age_pub__data;
     pub_age_pub_->publish(out);
   }
+
   {
     std_msgs::msg::Bool out{};  // value-initialised
     out.data = r.out__alive_pub__data;
@@ -62,10 +106,17 @@ void LinkWatchdogNodeInterfaces::run_check_link() {
 
 void LinkWatchdogNodeInterfaces::run_on_heartbeat(const std_msgs::msg::Empty & in) {
   const auto run = engine_.enter();
-  if (!run) { return; }
+  if (!run) {
+    return;
+  }
+
   const double now_sec = steady_now();
   const auto result = engine_.run_on_heartbeat(run, in, now_sec);
-  if (!result) { return; }  // a numeric fault was reported by the engine (SPEC-02 §7 step 6)
+  if (!result) {
+    // A numeric fault: the engine reported it (SPEC-02 section 7, step 6).
+    return;
+  }
+
   [[maybe_unused]] const auto & r = *result;
 }
 

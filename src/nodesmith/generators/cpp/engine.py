@@ -9,6 +9,7 @@ sections 3 to 6). It returns the outputs to publish and never touches ROS: the a
 
 from . import names
 from .dag import PipelineInfo
+from .layout import assign, call, signature
 from .naming import member
 
 _HAS_INPUT = ("subscriber", "service")
@@ -39,32 +40,45 @@ def _method(pipeline: PipelineInfo, result_type: str) -> str:
         parameters.append("const In & in")
     if pipeline.uses_now:
         parameters.append("double now_sec")
-    arguments = ("in, " if has_input else "") + "*params, state_, "
-    arguments += "now_sec, " if pipeline.uses_now else "0.0, "
-    arguments += "dt_sec, " if pipeline.uses_dt else "0.0, "
+    arguments = ["in"] if has_input else []
+    arguments += ["*params", "state_"]
+    arguments += [
+        "now_sec" if pipeline.uses_now else "0.0",
+        "dt_sec" if pipeline.uses_dt else "0.0",
+    ]
+    arguments.append("r")
+
     lines = []
     if has_input:
         lines.append("  template <class In>")
     lines += [
-        f"  std::optional<{result_type}> run_{name}({', '.join(parameters)}) {{",
-        "    const auto params = params_.acquire();  // one snapshot for the whole execution (SPEC-12 §5)",
+        signature(f"  std::optional<{result_type}> run_{name}(", parameters),
+        "    // One snapshot for the whole execution (SPEC-12 section 5).",
+        "    const auto params = params_.acquire();",
+        "",
     ]
     if pipeline.uses_dt:
         lines += [
-            f"    const double dt_sec = have_last_{name}_ ? now_sec - last_{name}_ : 0.0;",
+            assign(
+                "const double dt_sec", f"have_last_{name}_ ? now_sec - last_{name}_ : 0.0", "    "
+            ),
             f"    have_last_{name}_ = true;",
             f"    last_{name}_ = now_sec;",
+            "",
         ]
     lines += [
         f"    {result_type} r;",
-        f"    if (!eval_{name}({arguments}r)) {{",
-        f"      diag_.report(r2d::Code::ERR_RUN_101, {names.pipeline(name)});  // preallocated ring: no allocation, no logging here",
+        call(f"if (!eval_{name}(", arguments, ")) {", "    "),
+        "      // A preallocated ring: no allocation and no logging here.",
+        f"      diag_.report(r2d::Code::ERR_RUN_101, {names.pipeline(name)});",
         "      return std::nullopt;",
         "    }",
     ]
-    lines += [
-        f"    state_.{member(state)} = r.{result_member};  // step 5: commit"
+    commits = [
+        f"    state_.{member(state)} = r.{result_member};"
         for state, _, result_member in pipeline.state_members
     ]
-    lines += ["    return r;", "  }"]
+    if commits:
+        lines += ["", "    // Step 5: commit.", *commits]
+    lines += ["", "    return r;", "  }"]
     return "\n".join(lines)

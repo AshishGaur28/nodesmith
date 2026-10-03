@@ -25,6 +25,12 @@ def environment() -> Environment:
     )
 
 
+def binding_header() -> str:
+    """Text of ``ros_binding.hpp``: the only file that calls the release-sensitive parts of
+    rclcpp. It is identical in every generated package."""
+    return (TEMPLATES / "ros_binding.hpp").read_text()
+
+
 def runtime_header() -> str:
     """Text of ``runtime.hpp``: the SPEC-12 primitives, then the numeric helpers and the
     diagnostics ring. It is identical in every generated package."""

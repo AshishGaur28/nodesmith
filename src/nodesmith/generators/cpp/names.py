@@ -63,22 +63,33 @@ def _bare(qualified: str) -> str:
 
 
 def constants(ir: dict) -> list[str]:
-    """The ``inline constexpr`` definitions of ``interface_names.hpp``, in a fixed order."""
+    """The lines of ``interface_names.hpp`` between its namespace braces, in a fixed order:
+    sections of ``inline constexpr`` definitions, each under a comment and after a blank line."""
     meta = ir["node_meta"]
     interfaces = ir["interfaces"]
-    lines = [
-        f"inline constexpr char kNodeName[] = {cpp_string(meta['name'])};",
-        f"inline constexpr char kNodeNamespace[] = {cpp_string(meta['namespace'])};",
-        f"inline constexpr char kDiagnosticsTopic[] = {cpp_string(DIAGNOSTICS_TOPIC)};",
-        f"inline constexpr std::size_t kDiagnosticsQosDepth = {DIAGNOSTICS_DEPTH};",
-        f"inline constexpr std::int64_t kDiagnosticsPeriodS = {DIAGNOSTICS_PERIOD_S};",
-        f"inline constexpr char kParametersWho[] = {cpp_string('parameters')};",
-        f"inline constexpr std::size_t kExecutorThreads = {ir['concurrency']['threads']};",
+    sections: list[tuple[str, list[str]]] = [
+        (
+            "The node",
+            [
+                f"inline constexpr char kNodeName[] = {cpp_string(meta['name'])};",
+                f"inline constexpr char kNodeNamespace[] = {cpp_string(meta['namespace'])};",
+                f"inline constexpr std::size_t kExecutorThreads = {ir['concurrency']['threads']};",
+            ],
+        ),
+        (
+            "Diagnostics",
+            [
+                f"inline constexpr char kDiagnosticsTopic[] = {cpp_string(DIAGNOSTICS_TOPIC)};",
+                f"inline constexpr std::size_t kDiagnosticsQosDepth = {DIAGNOSTICS_DEPTH};",
+                f"inline constexpr std::int64_t kDiagnosticsPeriodS = {DIAGNOSTICS_PERIOD_S};",
+            ],
+        ),
     ]
-    for kind, topic_name, depth_name in (
-        ("publishers", pub_topic, pub_depth),
-        ("subscribers", sub_topic, sub_depth),
+    for title, kind, topic_name, depth_name in (
+        ("Publishers", "publishers", pub_topic, pub_depth),
+        ("Subscribers", "subscribers", sub_topic, sub_depth),
     ):
+        lines = []
         for endpoint in interfaces[kind]:
             identifier = endpoint["identifier"]
             lines.append(
@@ -90,23 +101,43 @@ def constants(ir: dict) -> list[str]:
                     f"inline constexpr std::size_t {_bare(depth_name(identifier))} = "
                     f"{endpoint['qos']['depth']};"
                 )
-    for service in interfaces["services"]:
-        lines.append(
-            f"inline constexpr char {_bare(service_name(service['identifier']))}[] = "
-            f"{cpp_string(service['service_name'])};"
+        sections.append((title, lines))
+    sections.append(
+        (
+            "Services",
+            [
+                f"inline constexpr char {_bare(service_name(service['identifier']))}[] = "
+                f"{cpp_string(service['service_name'])};"
+                for service in interfaces["services"]
+            ],
         )
+    )
+    pipeline_lines = []
     for dag in ir["execution_dags"]:
-        lines.append(
+        pipeline_lines.append(
             f"inline constexpr char {_bare(pipeline(dag['id']))}[] = {cpp_string(dag['id'])};"
         )
         if dag["trigger"]["kind"] == "timer":
-            lines.append(
+            pipeline_lines.append(
                 f"inline constexpr std::int64_t {_bare(period_ms(dag['id']))} = "
                 f"{dag['trigger']['period_ms']};"
             )
-    for entry in ir["parameters"]:
-        lines.append(
-            f"inline constexpr char {_bare(parameter(entry['name']))}[] = "
-            f"{cpp_string(entry['name'])};"
+    sections.append(("Pipelines", pipeline_lines))
+    sections.append(
+        (
+            "Parameters",
+            [
+                f"inline constexpr char kParametersWho[] = {cpp_string('parameters')};",
+                *(
+                    f"inline constexpr char {_bare(parameter(entry['name']))}[] = "
+                    f"{cpp_string(entry['name'])};"
+                    for entry in ir["parameters"]
+                ),
+            ],
         )
+    )
+    lines = []
+    for title, section in sections:
+        if section:
+            lines += ["", f"// {title}", *section]
     return lines

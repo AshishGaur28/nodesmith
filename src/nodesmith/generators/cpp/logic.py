@@ -20,6 +20,7 @@ import re
 from pathlib import Path
 
 from ...ir.canonical import ir_hash
+from .layout import signature
 from .naming import cpp_type, member
 from .templates import environment
 
@@ -47,15 +48,47 @@ def function_context(ir: dict) -> list[dict]:
                     "cpp_type": cpp if by_value else f"const {cpp} &",
                 }
             )
+        name, returns = function["name"], cpp_type(function["returns"])
+        named = [f"{argument['cpp_type']} {argument['name']}" for argument in arguments]
+        unnamed = [argument["cpp_type"] for argument in arguments]
         functions.append(
             {
-                "name": function["name"],
+                "name": name,
                 "description": function.get("description", ""),
-                "returns": cpp_type(function["returns"]),
+                "returns": returns,
                 "arguments": arguments,
+                "signature": signature(f"{returns} {name}(", [*named, "bool & fault"], ";"),
+                "definition": _definition(returns, name, named),
+                "weak_definition": _weak_definition(returns, name, unnamed),
             }
         )
     return functions
+
+
+def _definition(returns: str, name: str, named: list[str]) -> str:
+    """A function of the starter file: it faults until the user implements it."""
+    unused = [f"[[maybe_unused]] {parameter}" for parameter in named]
+    lines = [signature(f"{returns} {name}(", [*unused, "bool & fault"])]
+    lines += [
+        f"  fault = true;  // TODO: implement {name}, then delete this line.",
+        "  return {};",
+        "}",
+    ]
+    return "\n".join(lines)
+
+
+def _weak_definition(returns: str, name: str, unnamed: list[str]) -> str:
+    """The placeholder that replaces a function the user has not written."""
+    head = f"__attribute__((weak)) {returns} {name}("
+    return "\n".join(
+        [
+            signature(head, [*unnamed, "bool & fault"]),
+            f'  [[maybe_unused]] static const bool reported = (not_implemented("{name}"), true);',
+            "  fault = true;",
+            "  return {};",
+            "}",
+        ]
+    )
 
 
 def _render(template: str, ir: dict) -> str:

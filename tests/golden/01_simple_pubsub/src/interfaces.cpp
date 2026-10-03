@@ -7,32 +7,53 @@
 namespace demo {
 
 namespace {
-[[maybe_unused]] double steady_now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
-[[maybe_unused]] double system_now() { return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(); }
+
+using Seconds = std::chrono::duration<double>;
+
+[[maybe_unused]] double steady_now() {
+  return Seconds(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+[[maybe_unused]] double system_now() {
+  return Seconds(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 }  // namespace
 
-// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is picked up with the node
-// (`automatically_add_to_executor_with_node` defaults to true).
-EchoNodeInterfaces::EchoNodeInterfaces(rclcpp::Node & node, EchoNodeEngine & engine) : node_(node), engine_(engine) {
+// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
+// picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
+EchoNodeInterfaces::EchoNodeInterfaces(rclcpp::Node & node, EchoNodeEngine & engine)
+    : node_(node), engine_(engine) {
   group_pipeline_echo_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  pub_out_pub_ = node_.create_publisher<std_msgs::msg::Float64>(names::kPubTopicOutPub, rclcpp::QoS(names::kPubQosDepthOutPub).reliable().durability_volatile());
-  {
-    rclcpp::SubscriptionOptions opts;
-    opts.callback_group = group_pipeline_echo_;
-    sub_in_sub_echo_ = node_.create_subscription<std_msgs::msg::Float64>(names::kSubTopicInSub, rclcpp::QoS(names::kSubQosDepthInSub).reliable().durability_volatile(),
-      [this](std_msgs::msg::Float64::ConstSharedPtr m) { run_echo(*m); }, opts);
-  }
+
+  pub_out_pub_ = node_.create_publisher<std_msgs::msg::Float64>(
+      names::kPubTopicOutPub,
+      rclcpp::QoS(names::kPubQosDepthOutPub).reliable().durability_volatile());
+
+  sub_in_sub_echo_ = binding::create_subscription<std_msgs::msg::Float64>(
+      node_,
+      names::kSubTopicInSub,
+      rclcpp::QoS(names::kSubQosDepthInSub).reliable().durability_volatile(),
+      [this](std_msgs::msg::Float64::ConstSharedPtr msg) { run_echo(*msg); },
+      group_pipeline_echo_);
 }
 
-void EchoNodeInterfaces::start() {
-}
+void EchoNodeInterfaces::start() {}
 
 void EchoNodeInterfaces::run_echo(const std_msgs::msg::Float64 & in) {
   const auto run = engine_.enter();
-  if (!run) { return; }
+  if (!run) {
+    return;
+  }
+
   const auto result = engine_.run_echo(run, in);
-  if (!result) { return; }  // a numeric fault was reported by the engine (SPEC-02 §7 step 6)
+  if (!result) {
+    // A numeric fault: the engine reported it (SPEC-02 section 7, step 6).
+    return;
+  }
+
   [[maybe_unused]] const auto & r = *result;
+
   {
     std_msgs::msg::Float64 out{};  // value-initialised
     out.data = r.out__out_pub__data;

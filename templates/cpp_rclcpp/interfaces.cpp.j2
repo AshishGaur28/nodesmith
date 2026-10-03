@@ -7,23 +7,36 @@
 namespace {{ ns }} {
 
 namespace {
-[[maybe_unused]] double steady_now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
-[[maybe_unused]] double system_now() { return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(); }
+
+using Seconds = std::chrono::duration<double>;
+
+[[maybe_unused]] double steady_now() {
+  return Seconds(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+[[maybe_unused]] double system_now() {
+  return Seconds(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 }  // namespace
 
-// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is picked up with the node
-// (`automatically_add_to_executor_with_node` defaults to true).
-{{ cls }}Interfaces::{{ cls }}Interfaces(rclcpp::Node & node, {{ cls }}Engine & engine) : node_(node), engine_(engine) {
+// Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
+// picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
+{{ constructor_head }}
 {% for line in creates %}
-  {{ line }}
+{{ ("  " ~ (line | indent(2))) if line else "" }}
 {% endfor %}
 }
 
+{% if startups %}
 void {{ cls }}Interfaces::start() {
 {% for p in startups %}
   run_{{ p }}();
 {% endfor %}
 }
+{% else %}
+void {{ cls }}Interfaces::start() {}
+{% endif %}
 {% if run_methods %}
 
 {{ run_methods }}

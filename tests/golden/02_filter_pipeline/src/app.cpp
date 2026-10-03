@@ -2,18 +2,20 @@
 // IR hash: 4cf0ab3bfb960372eb610d726663d31cc3398467f9943166b1a439e3df7b809d
 #include "imu_filter_node/app.hpp"
 
+#include <cstdlib>
+
 namespace sensors::chassis {
 
 ImuFilterNodeApp::ImuFilterNodeApp(int argc, char ** argv)
-: context_(argc, argv),
-  node_(std::make_shared<ImuFilterNode>()),
-  executor_(std::make_unique<rclcpp::executors::SingleThreadedExecutor>()) {
+    : context_(argc, argv),
+      node_(std::make_shared<ImuFilterNode>()),
+      executor_(binding::make_single_threaded_executor()) {
   executor_->add_node(node_);
 }
 
 int ImuFilterNodeApp::run() {
   executor_->spin();
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 }  // namespace sensors::chassis

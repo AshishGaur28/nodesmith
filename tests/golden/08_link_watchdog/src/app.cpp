@@ -2,18 +2,20 @@
 // IR hash: 746d5e920b285d996bad9eb570c5db8d78e04cd58df8e88bd248b8cc9436dd16
 #include "link_watchdog_node/app.hpp"
 
+#include <cstdlib>
+
 namespace monitoring {
 
 LinkWatchdogNodeApp::LinkWatchdogNodeApp(int argc, char ** argv)
-: context_(argc, argv),
-  node_(std::make_shared<LinkWatchdogNode>()),
-  executor_(std::make_unique<rclcpp::executors::SingleThreadedExecutor>()) {
+    : context_(argc, argv),
+      node_(std::make_shared<LinkWatchdogNode>()),
+      executor_(binding::make_single_threaded_executor()) {
   executor_->add_node(node_);
 }
 
 int LinkWatchdogNodeApp::run() {
   executor_->spin();
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 }  // namespace monitoring

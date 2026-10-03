@@ -2,18 +2,20 @@
 // IR hash: a6de20eed059bc5dd26c590e4a2a3a072505576f0499346f76bb5f5b68d5a332
 #include "speed_planner_node/app.hpp"
 
+#include <cstdlib>
+
 namespace planning {
 
 SpeedPlannerNodeApp::SpeedPlannerNodeApp(int argc, char ** argv)
-: context_(argc, argv),
-  node_(std::make_shared<SpeedPlannerNode>()),
-  executor_(std::make_unique<rclcpp::executors::SingleThreadedExecutor>()) {
+    : context_(argc, argv),
+      node_(std::make_shared<SpeedPlannerNode>()),
+      executor_(binding::make_single_threaded_executor()) {
   executor_->add_node(node_);
 }
 
 int SpeedPlannerNodeApp::run() {
   executor_->spin();
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 }  // namespace planning

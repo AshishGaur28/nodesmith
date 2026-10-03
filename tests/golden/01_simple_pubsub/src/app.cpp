@@ -2,18 +2,20 @@
 // IR hash: fb309b88a03a72e42a90ee7c1ec2c8d8ac9d10088a8c8981452fe04f71ab76ef
 #include "echo_node/app.hpp"
 
+#include <cstdlib>
+
 namespace demo {
 
 EchoNodeApp::EchoNodeApp(int argc, char ** argv)
-: context_(argc, argv),
-  node_(std::make_shared<EchoNode>()),
-  executor_(std::make_unique<rclcpp::executors::SingleThreadedExecutor>()) {
+    : context_(argc, argv),
+      node_(std::make_shared<EchoNode>()),
+      executor_(binding::make_single_threaded_executor()) {
   executor_->add_node(node_);
 }
 
 int EchoNodeApp::run() {
   executor_->spin();
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 }  // namespace demo

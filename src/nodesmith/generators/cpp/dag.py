@@ -13,6 +13,7 @@ returning ``false``. Committing and publishing happen in the node (``node.py``).
 from dataclasses import dataclass, field
 
 from .errors import Unsupported
+from .layout import assign
 from .literals import literal
 from .naming import NARROW_INTS, cpp_type, member, path_ident
 
@@ -249,8 +250,11 @@ class DagEmitter:
         """Fill in ``info.body`` and the member lists; return ``info``."""
         info = self.info
         declarations = [
-            f"const {cpp_type(self.nodes[nid]['type_symbol'])} {self.local_name(nid)} = "
-            f"{self.expression(nid)};"
+            assign(
+                f"const {cpp_type(self.nodes[nid]['type_symbol'])} {self.local_name(nid)}",
+                self.expression(nid),
+                "  ",
+            )
             for nid in (n["id"] for n in self.dag["nodes"])
             if nid in self.materialized
         ]
@@ -258,8 +262,13 @@ class DagEmitter:
         self._state_writes(checks, assignments)
         self._output_assignments(checks, assignments)
         checks = list(dict.fromkeys(checks))  # a value reaching two sinks is checked once
-        lines = [*declarations, *checks, "if (fault) return false;", *assignments, "return true;"]
-        info.body = "\n  ".join(lines)
+        guard = ["  if (fault) {", "    return false;", "  }"]
+        groups = [
+            declarations,
+            [*(f"  {check}" for check in checks), *guard],
+            [*(f"  {line}" for line in assignments), "  return true;"],
+        ]
+        info.body = "\n\n".join("\n".join(group) for group in groups if group)
         return info
 
     def _state_writes(self, checks: list[str], assignments: list[str]) -> None:
