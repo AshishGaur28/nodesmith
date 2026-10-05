@@ -35,9 +35,7 @@ target_include_directories({{ pkg }} PRIVATE logic)
 {% else %}
 add_executable({{ pkg }} ${NODE_SOURCES})
 {% endif %}
-target_include_directories({{ pkg }} PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
+target_include_directories({{ pkg }} PRIVATE include)
 ament_target_dependencies({{ pkg }}
 {% for dep in depends %}
   {{ dep }}
@@ -45,7 +43,6 @@ ament_target_dependencies({{ pkg }}
   )
 
 install(TARGETS {{ pkg }} DESTINATION lib/${PROJECT_NAME})
-install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY launch{% if has_params %} config{% endif %} DESTINATION share/${PROJECT_NAME})
 
 ament_package()

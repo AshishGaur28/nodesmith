@@ -32,9 +32,7 @@ file(GLOB_RECURSE USER_LOGIC CONFIGURE_DEPENDS logic/*.cpp logic/*.cc logic/*.cx
 
 add_executable(speed_planner_node ${NODE_SOURCES} src/logic_defaults.cpp ${USER_LOGIC})
 target_include_directories(speed_planner_node PRIVATE logic)
-target_include_directories(speed_planner_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
+target_include_directories(speed_planner_node PRIVATE include)
 ament_target_dependencies(speed_planner_node
   diagnostic_msgs
   rcl_interfaces
@@ -43,7 +41,6 @@ ament_target_dependencies(speed_planner_node
   )
 
 install(TARGETS speed_planner_node DESTINATION lib/${PROJECT_NAME})
-install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 
 ament_package()

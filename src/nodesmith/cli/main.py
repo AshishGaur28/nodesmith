@@ -46,6 +46,9 @@ def _build_parser() -> argparse.ArgumentParser:
     generate.add_argument(
         "--logic-dir", help="the folder with your functions (default: logic/ next to the manifest)"
     )
+    generate.add_argument("--maintainer", help="maintainer name for package.xml")
+    generate.add_argument("--maintainer-email", help="maintainer e-mail for package.xml")
+    generate.add_argument("--license", help="license (SPDX identifier) for package.xml")
 
     for name in ("bench", "clean"):
         commands.add_parser(name, help="not implemented yet").add_argument("--manifest")
@@ -69,10 +72,17 @@ def _run(arguments: argparse.Namespace, result: api.Compiled) -> None:
     if arguments.command == "lower":
         api.write_ir(result, arguments.output)
     elif arguments.command == "generate":
-        for name in api.generate(result, arguments.output_dir, arguments.logic_dir):
-            print(
-                f"note: no implementation of {name}() found in your logic folder", file=sys.stderr
-            )
+        package_info = {
+            key: value
+            for key, value in {
+                "maintainer": arguments.maintainer,
+                "maintainer_email": arguments.maintainer_email,
+                "license": arguments.license,
+            }.items()
+            if value
+        }
+        for note in api.generate(result, arguments.output_dir, arguments.logic_dir, package_info):
+            print(f"note: {note}", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> int:

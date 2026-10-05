@@ -3,8 +3,8 @@
   <name>{{ pkg }}</name>
   <version>{{ version }}</version>
   <description>{{ description }}</description>
-  <maintainer email="todo@example.com">TODO</maintainer>
-  <license>TODO</license>
+  <maintainer email="{{ maintainer_email }}">{{ maintainer }}</maintainer>
+  <license>{{ license }}</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 {% for dep in depends %}

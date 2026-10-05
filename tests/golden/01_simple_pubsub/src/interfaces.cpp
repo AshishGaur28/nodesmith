@@ -2,23 +2,7 @@
 // IR hash: fb309b88a03a72e42a90ee7c1ec2c8d8ac9d10088a8c8981452fe04f71ab76ef
 #include "echo_node/interfaces.hpp"
 
-#include <chrono>
-
 namespace demo {
-
-namespace {
-
-using Seconds = std::chrono::duration<double>;
-
-[[maybe_unused]] double steady_now() {
-  return Seconds(std::chrono::steady_clock::now().time_since_epoch()).count();
-}
-
-[[maybe_unused]] double system_now() {
-  return Seconds(std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
-}  // namespace
 
 // Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
 // picked up with the node (`automatically_add_to_executor_with_node` defaults to true).

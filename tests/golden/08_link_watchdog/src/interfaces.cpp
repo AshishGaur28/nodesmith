@@ -10,12 +10,8 @@ namespace {
 
 using Seconds = std::chrono::duration<double>;
 
-[[maybe_unused]] double steady_now() {
+double steady_now() {
   return Seconds(std::chrono::steady_clock::now().time_since_epoch()).count();
-}
-
-[[maybe_unused]] double system_now() {
-  return Seconds(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
 }  // namespace

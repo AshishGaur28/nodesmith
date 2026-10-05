@@ -30,7 +30,9 @@ def literal(value, canonical_type: str) -> str:
     if canonical_type == "int32":
         return f"std::int32_t{{{value}}}"
     if canonical_type == "int64":
-        return f"std::int64_t{{INT64_C({value})}}"
+        if -(2**31) <= value < 2**31:
+            return f"std::int64_t{{{value}}}"
+        return f"std::int64_t{{INT64_C({value})}}"  # a literal that does not fit in int
     text = repr(float(value))
     if not any(marker in text for marker in ".eEn"):
         text += ".0"

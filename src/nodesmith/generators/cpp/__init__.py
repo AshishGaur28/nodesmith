@@ -8,6 +8,7 @@ Public API: ``generate_package`` (IR -> files), ``write_package`` (files -> disk
 files from the templates in ``templates/cpp_rclcpp``).
 """
 
+from .advice import advisories
 from .errors import Unsupported
 from .logic import has_user_logic, read_logic_dir, starter_files, unimplemented
 from .package import generate_package, write_package
@@ -15,6 +16,7 @@ from .templates import runtime_header
 
 __all__ = [
     "Unsupported",
+    "advisories",
     "generate_package",
     "has_user_logic",
     "read_logic_dir",

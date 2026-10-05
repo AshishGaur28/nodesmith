@@ -291,3 +291,65 @@ def test_a_node_without_parameters_has_no_parameter_file():
     assert not [f for f in files if f.startswith("config/")]
     assert "parameters=" not in files["launch/echo_node.launch.py"]
     assert "install(DIRECTORY launch DESTINATION" in files["CMakeLists.txt"]
+
+
+def test_package_xml_takes_maintainer_and_license_and_escapes_text(tmp_path, capsys):
+    manifest = tmp_path / "m.toml"
+    manifest.write_text(
+        (ROOT / "examples/01_simple_pubsub.toml")
+        .read_text()
+        .replace(
+            'target_language = "cpp"',
+            'target_language = "cpp"\ndescription = "Fast & <safe> node"',
+            1,
+        )
+    )
+    out = tmp_path / "p"
+    assert (
+        main(
+            [
+                "generate",
+                "--manifest",
+                str(manifest),
+                "--output-dir",
+                str(out),
+                "--maintainer",
+                "A & B",
+                "--maintainer-email",
+                "ab@example.org",
+                "--license",
+                "Apache-2.0",
+            ]
+        )
+        == 0
+    )
+    xml = (out / "package.xml").read_text()
+    assert '<maintainer email="ab@example.org">A &amp; B</maintainer>' in xml
+    assert "<license>Apache-2.0</license>" in xml
+    assert "Fast &amp; &lt;safe&gt;" in xml
+    assert "placeholder" not in capsys.readouterr().err
+
+
+def test_generate_says_when_package_xml_still_has_placeholders(tmp_path, capsys):
+    manifest = str(ROOT / "examples/01_simple_pubsub.toml")
+    assert main(["generate", "--manifest", manifest, "--output-dir", str(tmp_path / "p")]) == 0
+    err = capsys.readouterr().err
+    assert "placeholder" in err and "--maintainer" in err and "--license" in err
+
+
+def test_generate_says_when_pipelines_on_different_clocks_share_state(tmp_path, capsys):
+    manifest = tmp_path / "m.toml"
+    manifest.write_text(
+        (ROOT / "examples/08_link_watchdog.toml").read_text().replace('"steady"', '"system"')
+    )
+    arguments = ["generate", "--manifest", str(manifest), "--output-dir", str(tmp_path / "p")]
+    assert main([*arguments, "--target-language", "cpp"]) == 0
+    err = capsys.readouterr().err
+    assert "'last_seen'" in err and "check_link: system" in err and "on_heartbeat: steady" in err
+
+
+def test_unneeded_headers_are_left_out(tmp_path):
+    files = generate_package(compile_manifest(ROOT / "examples/01_simple_pubsub.toml").ir)
+    assert "#include <regex>" not in files["include/echo_node/pipelines.hpp"]
+    assert "#include <atomic>" not in files["include/echo_node/interfaces.hpp"]
+    assert "steady_now" not in files["src/interfaces.cpp"]

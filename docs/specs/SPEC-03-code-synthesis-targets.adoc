@@ -149,7 +149,7 @@ The classes and their single responsibilities (the dependency points one way, fr
 | `<Node>Parameters` | Declares the ROS parameters and forwards every update to the engine, which validates it.
 | `<Node>Diagnostics` | Publishes the engine's diagnostics ring on its own timer.
 | `<Node>` | The `rclcpp::Node` (kept so that launch files and composition work): constructs and wires the four parts above, calls the user's `setup()` and `teardown()`.
-| `<Node>App` | Owns the ROS context, the node and the executor. `main()` creates it and calls `run()`.
+| `<Node>App` | Owns the ROS context, the node and the executor. `main()` creates it and calls `run()`, and turns an exception (for example an invalid parameter value at start-up) into a message on standard error and a failure exit status, not an abort.
 |===
 
 Topics, services, QoS depths, timer periods, parameter names and pipeline names appear once, as constants in `interface_names.hpp`; the other files refer to them.

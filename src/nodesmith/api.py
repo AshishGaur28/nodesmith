@@ -143,14 +143,20 @@ def _require_cpp(compiled: Compiled, what: str) -> None:
 
 
 def generate(
-    compiled: Compiled, output_dir: str | Path, logic_dir: str | Path | None = None
+    compiled: Compiled,
+    output_dir: str | Path,
+    logic_dir: str | Path | None = None,
+    package_info: dict[str, str] | None = None,
 ) -> list[str]:
     """Write the source package of the manifest's target language into ``output_dir``.
 
     If the manifest declares functions, the user's files in ``logic_dir`` (default: ``logic/`` next
     to the manifest) are copied into the package. When that folder does not exist yet, a starter
-    ``logic.cpp`` is written into it once; an existing folder is never modified. Returns the
-    declared functions that do not seem to be implemented in it (a hint, see ``unimplemented``)."""
+    ``logic.cpp`` is written into it once; an existing folder is never modified.
+    ``package_info`` (``maintainer``, ``maintainer_email``, ``license``) goes into package.xml.
+
+    Returns notes for the user: functions that do not seem to be implemented in the logic folder,
+    placeholders left in package.xml, and other things worth a look (see ``cpp.advisories``)."""
     _require_cpp(compiled, "generating")
     logic_files = None
     if cpp.has_user_logic(compiled.ir):
@@ -162,8 +168,16 @@ def generate(
         logic_files = cpp.read_logic_dir(folder)
     try:
         cpp.write_package(
-            cpp.generate_package(compiled.ir, compiled.rmw, logic_files=logic_files), output_dir
+            cpp.generate_package(
+                compiled.ir, compiled.rmw, logic_files=logic_files, package_info=package_info
+            ),
+            output_dir,
         )
     except cpp.Unsupported as unsupported:
         raise GenerationError(str(unsupported)) from unsupported
-    return cpp.unimplemented(compiled.ir, logic_files) if logic_files is not None else []
+    notes = [
+        f"no implementation of {name}() found in your logic folder"
+        for name in (cpp.unimplemented(compiled.ir, logic_files) if logic_files is not None else [])
+    ]
+    notes += cpp.advisories(compiled.ir, package_info)
+    return notes

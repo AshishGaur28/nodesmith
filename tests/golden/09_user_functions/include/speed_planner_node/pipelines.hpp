@@ -7,7 +7,6 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
-#include <regex>
 #include <string>
 #include <vector>
 

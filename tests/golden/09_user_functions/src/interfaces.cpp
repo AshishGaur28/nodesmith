@@ -2,23 +2,7 @@
 // IR hash: a6de20eed059bc5dd26c590e4a2a3a072505576f0499346f76bb5f5b68d5a332
 #include "speed_planner_node/interfaces.hpp"
 
-#include <chrono>
-
 namespace planning {
-
-namespace {
-
-using Seconds = std::chrono::duration<double>;
-
-[[maybe_unused]] double steady_now() {
-  return Seconds(std::chrono::steady_clock::now().time_since_epoch()).count();
-}
-
-[[maybe_unused]] double system_now() {
-  return Seconds(std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
-}  // namespace
 
 // Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
 // picked up with the node (`automatically_add_to_executor_with_node` defaults to true).

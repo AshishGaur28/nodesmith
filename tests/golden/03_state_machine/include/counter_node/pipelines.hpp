@@ -7,7 +7,6 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
-#include <regex>
 #include <string>
 #include <vector>
 
@@ -16,12 +15,12 @@
 namespace demo {
 
 struct Params {
-  std::int64_t limit{std::int64_t{INT64_C(10)}};
-  std::int64_t step{std::int64_t{INT64_C(1)}};
+  std::int64_t limit{std::int64_t{10}};
+  std::int64_t step{std::int64_t{1}};
 };
 
 struct State {
-  std::int64_t count{std::int64_t{INT64_C(0)}};
+  std::int64_t count{std::int64_t{0}};
 };
 
 inline bool constraint_0(
@@ -35,7 +34,7 @@ inline bool constraint_0(
 // One validation function for the initial values and for every update, so both obey the same
 // rules.
 inline std::optional<std::string> validate([[maybe_unused]] const Params & p) {
-  if (!(p.step >= std::int64_t{INT64_C(1)})) {
+  if (!(p.step >= std::int64_t{1})) {
     return std::string("'step' out of range [1, inf]");
   }
 
@@ -71,7 +70,7 @@ inline bool eval_reset(
     ResetResult & out) {
   bool fault = false;
 
-  const std::int64_t n0 = std::int64_t{INT64_C(0)};
+  const std::int64_t n0 = std::int64_t{0};
   const std::string n1 = std::string("counter reset");
   const bool n2 = true;
 

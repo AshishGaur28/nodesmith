@@ -4,6 +4,7 @@
 #pragma once
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <map>
 #include <memory>
@@ -92,8 +93,10 @@ class Node {
   Node(const std::string & name, const std::string & ns, const NodeOptions & = NodeOptions()) : name_(name), ns_(ns) {}
   virtual ~Node() = default;
 
+  // With STUB_PARAM_FAILS set, a declaration fails as ROS does for a value of the wrong type or outside its range.
   template <class T> T declare_parameter(const std::string & name, const T & def, const rcl_interfaces::msg::ParameterDescriptor & = {}) {
-    (void)name; return def;
+    if (std::getenv("STUB_PARAM_FAILS")) throw exceptions::InvalidParameterValueException("stub: invalid value for " + name);
+    return def;
   }
   OnSetParametersCallbackHandle::SharedPtr add_on_set_parameters_callback(std::function<rcl_interfaces::msg::SetParametersResult(const std::vector<Parameter> &)> cb) {
     handle_ = std::make_shared<OnSetParametersCallbackHandle>(); handle_->callback = std::move(cb); return handle_;

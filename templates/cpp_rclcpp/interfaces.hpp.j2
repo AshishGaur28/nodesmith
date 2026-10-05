@@ -4,8 +4,10 @@
 // hands what arrives to the engine and what the engine returns to the publishers.
 #pragma once
 
+{% if has_timers %}
 #include <atomic>
 #include <chrono>
+{% endif %}
 #include <memory>
 
 #include <rclcpp/rclcpp.hpp>

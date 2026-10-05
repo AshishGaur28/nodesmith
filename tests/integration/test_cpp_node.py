@@ -61,3 +61,11 @@ def test_a_function_missing_from_the_logic_folder_faults_instead_of_guessing():
     source = source.replace('#include "check.hpp"', f'#include "{DRIVERS[0].parent / "check.hpp"}"')
     code, output = node_harness.run_driver(ir, source, logic_source="")
     assert code == 0 and "logic::plan_speed is not implemented" in output, output
+
+
+def test_a_start_up_failure_ends_with_a_message_and_a_failure_status_not_an_abort():
+    ir = compile_manifest(ROOT / "examples" / "02_filter_pipeline.toml").ir
+    assert node_harness.run_main(ir) == (0, "")
+    code, stderr = node_harness.run_main(ir, {"STUB_PARAM_FAILS": "1"})
+    assert code == 1, f"exit status {code} (an abort would be 134)"
+    assert "imu_filter_node: stub: invalid value for alpha" in stderr

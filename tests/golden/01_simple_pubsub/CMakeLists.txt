@@ -26,9 +26,7 @@ set(NODE_SOURCES
   src/diagnostics.cpp)
 
 add_executable(echo_node ${NODE_SOURCES})
-target_include_directories(echo_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
+target_include_directories(echo_node PRIVATE include)
 ament_target_dependencies(echo_node
   diagnostic_msgs
   rcl_interfaces
@@ -37,7 +35,6 @@ ament_target_dependencies(echo_node
   )
 
 install(TARGETS echo_node DESTINATION lib/${PROJECT_NAME})
-install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 
 ament_package()

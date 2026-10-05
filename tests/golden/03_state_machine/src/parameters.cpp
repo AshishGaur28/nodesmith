@@ -15,7 +15,7 @@ CounterNodeParameters::CounterNodeParameters(rclcpp::Node & node, CounterNodeEng
 
   rcl_interfaces::msg::ParameterDescriptor d_limit;
   initial.limit = node.declare_parameter<std::int64_t>(
-      names::kParamLimit, static_cast<std::int64_t>(std::int64_t{INT64_C(10)}), d_limit);
+      names::kParamLimit, static_cast<std::int64_t>(std::int64_t{10}), d_limit);
 
   rcl_interfaces::msg::ParameterDescriptor d_step;
   d_step.integer_range.resize(1);
@@ -23,7 +23,7 @@ CounterNodeParameters::CounterNodeParameters(rclcpp::Node & node, CounterNodeEng
   d_step.integer_range[0].to_value = std::numeric_limits<std::int64_t>::max();
   d_step.integer_range[0].step = 0;
   initial.step = node.declare_parameter<std::int64_t>(
-      names::kParamStep, static_cast<std::int64_t>(std::int64_t{INT64_C(1)}), d_step);
+      names::kParamStep, static_cast<std::int64_t>(std::int64_t{1}), d_step);
 
   if (auto why = engine_.start(initial)) {
     throw rclcpp::exceptions::InvalidParameterValueException(*why);  // refuse to start

@@ -111,6 +111,23 @@ function). Include the header in your file and the compiler will tell you about 
 * *A function removed:* delete it from your files; it is harmless until you do.
 * *A signature changed:* update your function to match `logic_api.hpp`.
 
+== What a published message contains
+
+A pipeline publishes a message in which only the fields you map in `output_mapping` are set. Every
+other field keeps its default (zero, empty, or whatever ROS gives it), and Nodesmith cannot warn
+you about them because it never reads the `.msg` files. For example, an `Imu` with only
+`linear_acceleration.z` mapped has a zero timestamp and an all-zero orientation, which is not a
+valid quaternion. Map what your subscribers need, for instance `header.stamp` (declare it as `time`
+under `[interfaces]`) and copy the fields you only mean to pass through.
+
+== Notes after `generate`
+
+`generate` prints `note:` lines for things worth a look: a function with no implementation in your
+`logic/` folder, placeholder maintainer and license in `package.xml` (set them with `--maintainer`,
+`--maintainer-email` and `--license`), and a state variable used by pipelines that read `now_sec()`
+on different clocks (a timer on `ros` or `system` together with a subscriber, service or startup
+pipeline, which always use `steady`): their times cannot be compared.
+
 == Changing values without rebuilding
 
 The generated package has a parameter file, `config/<node>.params.yaml`, with every parameter and

@@ -45,6 +45,11 @@ class InterfacesBuilder:
         self.creates: list[str] = []
         self.methods: list[str] = []
         self.startups = [p.name for p in pipelines if p.trigger["kind"] == "startup"]
+        self.has_timers = any(p.trigger["kind"] == "timer" for p in pipelines)
+
+    def uses_clock(self, clock: str) -> bool:
+        """True if a pipeline samples ``now_sec()`` from this clock (``steady`` or ``system``)."""
+        return any(p.uses_now and _clock_of(p) == clock for p in self.pipelines)
 
     def build(self) -> "InterfacesBuilder":
         """Fill the three lists, in the order the generated code needs them."""
@@ -246,11 +251,17 @@ def _run_parameters(pipeline: PipelineInfo) -> list[str]:
     return []
 
 
-def _clock_now(pipeline: PipelineInfo) -> str:
+def _clock_of(pipeline: PipelineInfo) -> str:
+    """The clock ``now_sec()`` reads: the timer's own, else ``steady`` (SPEC-02 section 5)."""
     trigger = pipeline.trigger
-    if trigger["kind"] == "timer" and trigger["clock"] == "system":
+    return trigger["clock"] if trigger["kind"] == "timer" else "steady"
+
+
+def _clock_now(pipeline: PipelineInfo) -> str:
+    clock = _clock_of(pipeline)
+    if clock == "system":
         return "system_now()"
-    if trigger["kind"] == "timer" and trigger["clock"] == "ros":
+    if clock == "ros":
         return "node_.get_clock()->now().seconds()"
     return "steady_now()"
 

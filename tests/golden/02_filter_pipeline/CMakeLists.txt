@@ -27,9 +27,7 @@ set(NODE_SOURCES
   src/diagnostics.cpp)
 
 add_executable(imu_filter_node ${NODE_SOURCES})
-target_include_directories(imu_filter_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
+target_include_directories(imu_filter_node PRIVATE include)
 ament_target_dependencies(imu_filter_node
   diagnostic_msgs
   rcl_interfaces
@@ -39,7 +37,6 @@ ament_target_dependencies(imu_filter_node
   )
 
 install(TARGETS imu_filter_node DESTINATION lib/${PROJECT_NAME})
-install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 
 ament_package()

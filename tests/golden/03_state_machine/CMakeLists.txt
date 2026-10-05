@@ -27,9 +27,7 @@ set(NODE_SOURCES
   src/diagnostics.cpp)
 
 add_executable(counter_node ${NODE_SOURCES})
-target_include_directories(counter_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
+target_include_directories(counter_node PRIVATE include)
 ament_target_dependencies(counter_node
   diagnostic_msgs
   rcl_interfaces
@@ -39,7 +37,6 @@ ament_target_dependencies(counter_node
   )
 
 install(TARGETS counter_node DESTINATION lib/${PROJECT_NAME})
-install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 
 ament_package()

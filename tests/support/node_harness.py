@@ -150,3 +150,55 @@ def run_driver(ir, driver_source, extra_flags=(), logic_source=""):
             if check.returncode:
                 return check.returncode, f"{runner.name} failed:\n" + check.stderr[:2000]
     return run.returncode, run.stdout + run.stderr
+
+
+def run_main(ir, env=None):
+    """Builds the generated executable (``main.cpp``, the application, the node, the adapters) against the
+    stand-in and runs it with extra environment variables. Returns (returncode, stderr)."""
+    import os
+
+    files = generate_package(ir)
+    files.update({f"include/{p}": t for p, t in message_headers(ir).items()})
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        for rel, text in files.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text)
+        sources = [
+            root / "src" / name
+            for name in (
+                "main.cpp",
+                "app.cpp",
+                "interfaces.cpp",
+                "parameters.cpp",
+                "diagnostics.cpp",
+            )
+        ]
+        sources.append(root / f"src/{ir['node_meta']['name']}_node.cpp")
+        exe = root / "node"
+        build = subprocess.run(
+            [
+                compiler(),
+                "-std=c++17",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                f"-I{root}/include",
+                f"-I{STUB}",
+                *map(str, sources),
+                "-o",
+                str(exe),
+                "-pthread",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert build.returncode == 0, build.stderr[:3000]
+        run = subprocess.run(
+            [str(exe)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env={**os.environ, **(env or {})},
+        )
+    return run.returncode, run.stderr
