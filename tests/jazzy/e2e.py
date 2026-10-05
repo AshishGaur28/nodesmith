@@ -83,6 +83,28 @@ def launch_check(package):
         proc.wait(timeout=20)
 
 
+def component_check(package):
+    """The node is registered as a ROS 2 component, and a component container can load it."""
+    types = subprocess.run(
+        ["ros2", "component", "types"], capture_output=True, text=True, timeout=60
+    ).stdout.splitlines()
+    assert package in types, f"{package} is not a registered component package"
+    plugin = types[types.index(package) + 1].strip()
+    container = subprocess.Popen(["ros2", "run", "rclcpp_components", "component_container"])
+    try:
+        time.sleep(3.0)
+        load = subprocess.run(
+            ["ros2", "component", "load", "/ComponentManager", package, plugin],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert load.returncode == 0, load.stdout + load.stderr
+    finally:
+        container.send_signal(signal.SIGINT)
+        container.wait(timeout=20)
+
+
 def scenario_02(h):
     from sensor_msgs.msg import Imu
     from std_msgs.msg import String
@@ -216,6 +238,12 @@ def main(examples):
         except Exception as e:  # noqa: BLE001
             failures += 1
             print(f"FAIL {example} (launch file): {e!r}")
+        try:
+            component_check(names[example])
+            print(f"COMPONENT {example}")
+        except Exception as e:  # noqa: BLE001
+            failures += 1
+            print(f"FAIL {example} (component): {e!r}")
         scenario = SCENARIOS.get(example)
         if (
             scenario is None

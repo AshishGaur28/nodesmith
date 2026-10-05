@@ -2,6 +2,8 @@
 // IR hash: fb309b88a03a72e42a90ee7c1ec2c8d8ac9d10088a8c8981452fe04f71ab76ef
 #include "echo_node/echo_node_node.hpp"
 
+#include <rclcpp_components/register_node_macro.hpp>
+
 namespace demo {
 
 EchoNode::EchoNode(const rclcpp::NodeOptions & options)
@@ -14,6 +16,11 @@ EchoNode::EchoNode(const rclcpp::NodeOptions & options)
 
   // Startup pipelines run once, after the node is operational (SPEC-02 section 7).
   interfaces_.start();
+
+  RCLCPP_INFO(get_logger(), "started");
 }
 
 }  // namespace demo
+
+// Makes the node loadable into a component container (`ros2 component load`).
+RCLCPP_COMPONENTS_REGISTER_NODE(demo::EchoNode)

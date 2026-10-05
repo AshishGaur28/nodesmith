@@ -2,6 +2,8 @@
 // IR hash: {{ ir_hash }}
 #include "{{ pkg }}/{{ pkg }}_node.hpp"
 
+#include <rclcpp_components/register_node_macro.hpp>
+
 namespace {{ ns }} {
 
 {{ cls }}::{{ cls }}(const rclcpp::NodeOptions & options)
@@ -19,6 +21,8 @@ namespace {{ ns }} {
 
   // Startup pipelines run once, after the node is operational (SPEC-02 section 7).
   interfaces_.start();
+
+  RCLCPP_INFO(get_logger(), "started");
 }
 {% if has_user_logic %}
 
@@ -28,3 +32,6 @@ namespace {{ ns }} {
 {% endif %}
 
 }  // namespace {{ ns }}
+
+// Makes the node loadable into a component container (`ros2 component load`).
+RCLCPP_COMPONENTS_REGISTER_NODE({{ ns }}::{{ cls }})

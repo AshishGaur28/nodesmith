@@ -9,7 +9,7 @@
 namespace processing {
 
 GainNodeParameters::GainNodeParameters(rclcpp::Node & node, GainNodeEngine & engine)
-    : engine_(engine) {
+    : engine_(engine), logger_(node.get_logger()) {
   // The effective values include launch-file and command-line overrides.
   Params initial;
 
@@ -36,6 +36,7 @@ GainNodeParameters::GainNodeParameters(rclcpp::Node & node, GainNodeEngine & eng
 rcl_interfaces::msg::SetParametersResult GainNodeParameters::on_set(
     const std::vector<rclcpp::Parameter> & updates) {
   auto reject = [this](std::string why) {
+    RCLCPP_WARN(logger_, "parameter update rejected: %s", why.c_str());
     engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);
     rcl_interfaces::msg::SetParametersResult result;
     result.successful = false;

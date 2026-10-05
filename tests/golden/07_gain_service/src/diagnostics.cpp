@@ -2,7 +2,10 @@
 // IR hash: b38a0259678c01ef7beb38231c50a262057d689c70f2a5d9fae3a503f0d5820b
 #include "gain_node/diagnostics.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <string_view>
+#include <vector>
 
 namespace processing {
 
@@ -23,6 +26,14 @@ void GainNodeDiagnostics::drain() {
 
   diagnostic_msgs::msg::DiagnosticArray array;
 
+  // The same fault repeated within one drain is logged once, with a count.
+  struct Occurrence {
+    r2d::Code code;
+    const char * who;
+    std::size_t count;
+  };
+  std::vector<Occurrence> occurrences;
+
   engine_.drain_diagnostics([&](r2d::Code code, const char * who) {
     DiagnosticStatus status;
     status.level = code == r2d::Code::ERR_RUN_101 ? DiagnosticStatus::ERROR
@@ -40,11 +51,39 @@ void GainNodeDiagnostics::drain() {
 
     status.values = {code_entry, pipeline_entry};
     array.status.push_back(status);
+
+    const std::string_view name = who ? who : "";
+    const auto same = [&](const Occurrence & seen) {
+      return seen.code == code && std::string_view(seen.who ? seen.who : "") == name;
+    };
+    const auto found = std::find_if(occurrences.begin(), occurrences.end(), same);
+    if (found == occurrences.end()) {
+      occurrences.push_back({code, who, 1});
+    } else {
+      ++found->count;
+    }
   });
+
+  for (const auto & seen : occurrences) {
+    log(seen.code, seen.who, seen.count);
+  }
 
   if (!array.status.empty()) {
     array.header.stamp = node_.now();
     pub_->publish(array);
+  }
+}
+
+void GainNodeDiagnostics::log(r2d::Code code, const char * who, std::size_t count) {
+  const char * pipeline = who ? who : "";
+  if (code == r2d::Code::ERR_RUN_101) {
+    RCLCPP_ERROR(
+        node_.get_logger(), "%s: %s (pipeline '%s', %zu time(s))", r2d::code_name(code),
+        r2d::code_message(code), pipeline, count);
+  } else {
+    RCLCPP_WARN(
+        node_.get_logger(), "%s: %s (pipeline '%s', %zu time(s))", r2d::code_name(code),
+        r2d::code_message(code), pipeline, count);
   }
 }
 

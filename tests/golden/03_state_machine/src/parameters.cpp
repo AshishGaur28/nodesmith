@@ -9,7 +9,7 @@
 namespace demo {
 
 CounterNodeParameters::CounterNodeParameters(rclcpp::Node & node, CounterNodeEngine & engine)
-    : engine_(engine) {
+    : engine_(engine), logger_(node.get_logger()) {
   // The effective values include launch-file and command-line overrides.
   Params initial;
 
@@ -39,6 +39,7 @@ CounterNodeParameters::CounterNodeParameters(rclcpp::Node & node, CounterNodeEng
 rcl_interfaces::msg::SetParametersResult CounterNodeParameters::on_set(
     const std::vector<rclcpp::Parameter> & updates) {
   auto reject = [this](std::string why) {
+    RCLCPP_WARN(logger_, "parameter update rejected: %s", why.c_str());
     engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);
     rcl_interfaces::msg::SetParametersResult result;
     result.successful = false;

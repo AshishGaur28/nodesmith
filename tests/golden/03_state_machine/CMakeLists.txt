@@ -15,28 +15,50 @@ find_package(ament_cmake REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 
-set(NODE_SOURCES
-  src/main.cpp
-  src/app.cpp
+# The node is a shared library registered as a ROS 2 component, so it can be loaded into a
+# component container (`ros2 component load`) as well as run on its own by the executable below.
+set(COMPONENT_SOURCES
   src/counter_node_node.cpp
   src/interfaces.cpp
   src/parameters.cpp
   src/diagnostics.cpp)
 
-add_executable(counter_node ${NODE_SOURCES})
-target_include_directories(counter_node PRIVATE include)
-ament_target_dependencies(counter_node
+add_library(counter_node_component SHARED ${COMPONENT_SOURCES})
+target_include_directories(counter_node_component PUBLIC include)
+ament_target_dependencies(counter_node_component
   diagnostic_msgs
   rcl_interfaces
   rclcpp
+  rclcpp_components
   std_msgs
   std_srvs
   )
+rclcpp_components_register_nodes(counter_node_component "demo::CounterNode")
 
+add_executable(counter_node src/main.cpp src/app.cpp)
+target_link_libraries(counter_node counter_node_component)
+
+install(
+  TARGETS counter_node_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin)
 install(TARGETS counter_node DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
+
+if(BUILD_TESTING)
+  # The ROS 2 linters run under `colcon test` when they are installed. The copyright and cpplint
+  # checks are skipped: they want a license header in every file and Google header guards.
+  find_package(ament_lint_auto QUIET)
+  if(ament_lint_auto_FOUND)
+    set(ament_cmake_copyright_FOUND TRUE)
+    set(ament_cmake_cpplint_FOUND TRUE)
+    ament_lint_auto_find_test_dependencies()
+  endif()
+endif()
 
 ament_package()

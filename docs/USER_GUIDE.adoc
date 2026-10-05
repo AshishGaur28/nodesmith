@@ -128,6 +128,18 @@ under `[interfaces]`) and copy the fields you only mean to pass through.
 on different clocks (a timer on `ros` or `system` together with a subscriber, service or startup
 pipeline, which always use `steady`): their times cannot be compared.
 
+== Running the node
+
+[source,bash]
+----
+ros2 run <node> <node>                                          # on its own
+ros2 launch <node> <node>.launch.py                             # with its parameter file
+ros2 component load /ComponentManager <node> <namespace>::<Node>   # inside a component container
+----
+
+Faults and rejected parameter updates appear in the ROS log (`/rosout`) as well as on
+`/diagnostics`.
+
 == Changing values without rebuilding
 
 The generated package has a parameter file, `config/<node>.params.yaml`, with every parameter and

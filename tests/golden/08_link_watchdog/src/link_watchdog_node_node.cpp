@@ -2,6 +2,8 @@
 // IR hash: 746d5e920b285d996bad9eb570c5db8d78e04cd58df8e88bd248b8cc9436dd16
 #include "link_watchdog_node/link_watchdog_node_node.hpp"
 
+#include <rclcpp_components/register_node_macro.hpp>
+
 namespace monitoring {
 
 LinkWatchdogNode::LinkWatchdogNode(const rclcpp::NodeOptions & options)
@@ -14,6 +16,11 @@ LinkWatchdogNode::LinkWatchdogNode(const rclcpp::NodeOptions & options)
 
   // Startup pipelines run once, after the node is operational (SPEC-02 section 7).
   interfaces_.start();
+
+  RCLCPP_INFO(get_logger(), "started");
 }
 
 }  // namespace monitoring
+
+// Makes the node loadable into a component container (`ros2 component load`).
+RCLCPP_COMPONENTS_REGISTER_NODE(monitoring::LinkWatchdogNode)

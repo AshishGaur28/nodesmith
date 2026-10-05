@@ -28,6 +28,7 @@ class GainNodeParameters {
   rcl_interfaces::msg::SetParametersResult on_set(const std::vector<rclcpp::Parameter> & updates);
 
   GainNodeEngine & engine_;
+  rclcpp::Logger logger_;
   binding::ParameterCallbackHandle handle_;
 };
 

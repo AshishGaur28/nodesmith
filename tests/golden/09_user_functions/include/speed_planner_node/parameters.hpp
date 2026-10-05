@@ -28,6 +28,7 @@ class SpeedPlannerNodeParameters {
   rcl_interfaces::msg::SetParametersResult on_set(const std::vector<rclcpp::Parameter> & updates);
 
   SpeedPlannerNodeEngine & engine_;
+  rclcpp::Logger logger_;
   binding::ParameterCallbackHandle handle_;
 };
 

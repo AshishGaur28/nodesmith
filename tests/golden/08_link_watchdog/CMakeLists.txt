@@ -15,26 +15,48 @@ find_package(ament_cmake REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 
-set(NODE_SOURCES
-  src/main.cpp
-  src/app.cpp
+# The node is a shared library registered as a ROS 2 component, so it can be loaded into a
+# component container (`ros2 component load`) as well as run on its own by the executable below.
+set(COMPONENT_SOURCES
   src/link_watchdog_node_node.cpp
   src/interfaces.cpp
   src/parameters.cpp
   src/diagnostics.cpp)
 
-add_executable(link_watchdog_node ${NODE_SOURCES})
-target_include_directories(link_watchdog_node PRIVATE include)
-ament_target_dependencies(link_watchdog_node
+add_library(link_watchdog_node_component SHARED ${COMPONENT_SOURCES})
+target_include_directories(link_watchdog_node_component PUBLIC include)
+ament_target_dependencies(link_watchdog_node_component
   diagnostic_msgs
   rcl_interfaces
   rclcpp
+  rclcpp_components
   std_msgs
   )
+rclcpp_components_register_nodes(link_watchdog_node_component "monitoring::LinkWatchdogNode")
 
+add_executable(link_watchdog_node src/main.cpp src/app.cpp)
+target_link_libraries(link_watchdog_node link_watchdog_node_component)
+
+install(
+  TARGETS link_watchdog_node_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin)
 install(TARGETS link_watchdog_node DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
+
+if(BUILD_TESTING)
+  # The ROS 2 linters run under `colcon test` when they are installed. The copyright and cpplint
+  # checks are skipped: they want a license header in every file and Google header guards.
+  find_package(ament_lint_auto QUIET)
+  if(ament_lint_auto_FOUND)
+    set(ament_cmake_copyright_FOUND TRUE)
+    set(ament_cmake_cpplint_FOUND TRUE)
+    ament_lint_auto_find_test_dependencies()
+  endif()
+endif()
 
 ament_package()

@@ -28,6 +28,7 @@ class ImuFilterNodeParameters {
   rcl_interfaces::msg::SetParametersResult on_set(const std::vector<rclcpp::Parameter> & updates);
 
   ImuFilterNodeEngine & engine_;
+  rclcpp::Logger logger_;
   binding::ParameterCallbackHandle handle_;
 };
 

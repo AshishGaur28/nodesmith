@@ -2,6 +2,8 @@
 // IR hash: a6de20eed059bc5dd26c590e4a2a3a072505576f0499346f76bb5f5b68d5a332
 #include "speed_planner_node/speed_planner_node_node.hpp"
 
+#include <rclcpp_components/register_node_macro.hpp>
+
 namespace planning {
 
 SpeedPlannerNode::SpeedPlannerNode(const rclcpp::NodeOptions & options)
@@ -17,6 +19,8 @@ SpeedPlannerNode::SpeedPlannerNode(const rclcpp::NodeOptions & options)
 
   // Startup pipelines run once, after the node is operational (SPEC-02 section 7).
   interfaces_.start();
+
+  RCLCPP_INFO(get_logger(), "started");
 }
 
 SpeedPlannerNode::~SpeedPlannerNode() {
@@ -24,3 +28,6 @@ SpeedPlannerNode::~SpeedPlannerNode() {
 }
 
 }  // namespace planning
+
+// Makes the node loadable into a component container (`ros2 component load`).
+RCLCPP_COMPONENTS_REGISTER_NODE(planning::SpeedPlannerNode)

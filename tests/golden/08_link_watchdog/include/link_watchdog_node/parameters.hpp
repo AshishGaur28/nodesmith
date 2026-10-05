@@ -28,6 +28,7 @@ class LinkWatchdogNodeParameters {
   rcl_interfaces::msg::SetParametersResult on_set(const std::vector<rclcpp::Parameter> & updates);
 
   LinkWatchdogNodeEngine & engine_;
+  rclcpp::Logger logger_;
   binding::ParameterCallbackHandle handle_;
 };
 

@@ -2,6 +2,8 @@
 // IR hash: b38a0259678c01ef7beb38231c50a262057d689c70f2a5d9fae3a503f0d5820b
 #include "gain_node/gain_node_node.hpp"
 
+#include <rclcpp_components/register_node_macro.hpp>
+
 namespace processing {
 
 GainNode::GainNode(const rclcpp::NodeOptions & options)
@@ -14,6 +16,11 @@ GainNode::GainNode(const rclcpp::NodeOptions & options)
 
   // Startup pipelines run once, after the node is operational (SPEC-02 section 7).
   interfaces_.start();
+
+  RCLCPP_INFO(get_logger(), "started");
 }
 
 }  // namespace processing
+
+// Makes the node loadable into a component container (`ros2 component load`).
+RCLCPP_COMPONENTS_REGISTER_NODE(processing::GainNode)

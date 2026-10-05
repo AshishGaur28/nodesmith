@@ -3,21 +3,25 @@
 # defines this sequence: CI (.github/workflows/ci.yml) and tools/jazzy_check.sh both call it, so they cannot drift apart.
 # Run it inside a ROS 2 Jazzy environment (the ros:jazzy-ros-base image) as root; it installs its tools with apt.
 #
-#   tests/jazzy/run.sh [--smoke | --all | <example> ...] [--with-tests]
+#   tests/jazzy/run.sh [--smoke | --all | <example> ...] [--with-tests] [--lint]
 #
 # --smoke (default) builds the examples marked `smoke` in tests/jazzy/examples.txt, --all every example.
+# --lint also runs the ROS 2 linters (`colcon test`) on the generated packages and prints what they find. It is informational:
+# it does not change the result.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 SCOPE=smoke
 WITH_TESTS=0
+LINT=0
 NAMES=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --smoke) SCOPE=smoke; shift ;;
     --all) SCOPE=all; shift ;;
     --with-tests) WITH_TESTS=1; shift ;;
-    -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
+    --lint) LINT=1; shift ;;
+    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
     -*) echo "unknown option: $1" >&2; exit 2 ;;
     *) NAMES+=("$1"); shift ;;
   esac
@@ -43,6 +47,13 @@ if ! command -v colcon >/dev/null || ! python3 -c 'import venv, ensurepip' 2>/de
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get install -y -qq python3-venv python3-pip python3-colcon-common-extensions build-essential > /dev/null
+fi
+
+if [ "$LINT" = 1 ]; then
+  echo "== lint tools"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y -qq ros-jazzy-ament-lint-auto ros-jazzy-ament-lint-common > /dev/null
 fi
 
 echo "== install nodesmith"
@@ -76,4 +87,11 @@ set +u
 # shellcheck disable=SC1091
 . ws/install/setup.sh
 set -u
-python3 tests/jazzy/e2e.py "${SELECTED[@]%%:*}"
+status=0
+python3 tests/jazzy/e2e.py "${SELECTED[@]%%:*}" || status=$?
+
+if [ "$LINT" = 1 ]; then
+  echo "== lint (informational: it does not change the result)"
+  (cd ws && colcon test --event-handlers console_direct+ && colcon test-result --verbose) || true
+fi
+exit "$status"

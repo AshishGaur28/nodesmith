@@ -201,7 +201,9 @@ def test_functions_are_declared_in_logic_api_and_built_into_one_executable(tmp_p
     assert "namespace logic" in api and "plan_speed(" in api and "void setup();" in api
     assert (out / "src/main.cpp").exists() and (out / "src/logic_defaults.cpp").exists()
     cmake = (out / "CMakeLists.txt").read_text()
-    assert "add_executable(speed_planner_node" in cmake and "add_library" not in cmake
+    assert "add_executable(speed_planner_node src/main.cpp src/app.cpp)" in cmake
+    assert "add_library(speed_planner_node_component SHARED" in cmake
+    assert 'rclcpp_components_register_nodes(speed_planner_node_component "planning::' in cmake
     assert "logic/*.cpp" in cmake and "src/logic_defaults.cpp" in cmake
 
 

@@ -2,6 +2,8 @@
 // IR hash: cf473c6f24952073b0ad5f7ea6769da29b35ab9137f76e035719b2da74a0dfe8
 #include "counter_node/counter_node_node.hpp"
 
+#include <rclcpp_components/register_node_macro.hpp>
+
 namespace demo {
 
 CounterNode::CounterNode(const rclcpp::NodeOptions & options)
@@ -14,6 +16,11 @@ CounterNode::CounterNode(const rclcpp::NodeOptions & options)
 
   // Startup pipelines run once, after the node is operational (SPEC-02 section 7).
   interfaces_.start();
+
+  RCLCPP_INFO(get_logger(), "started");
 }
 
 }  // namespace demo
+
+// Makes the node loadable into a component container (`ros2 component load`).
+RCLCPP_COMPONENTS_REGISTER_NODE(demo::CounterNode)

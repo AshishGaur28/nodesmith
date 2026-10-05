@@ -46,6 +46,18 @@ int main() {
   CHECK(diag[0].status[1].values[0].value == "ERR_RUN_101" && diag[0].status[1].values[1].value == "filter_imu");
   CHECK(diag[0].status[1].level == diagnostic_msgs::msg::DiagnosticStatus::ERROR && diag[0].status[0].level == diagnostic_msgs::msg::DiagnosticStatus::WARN);
   CHECK(diag[0].status[1].name == "/sensors/chassis/imu_filter_node");
+
+  // The same events reach the ROS log, where an operator looks first.
+  const auto has_log = [](const std::string & part) {
+    for (const auto & line : rclcpp::log_lines()) {
+      if (line.find(part) != std::string::npos) return true;
+    }
+    return false;
+  };
+  CHECK(has_log("[INFO] started"));
+  CHECK(has_log("[WARN] parameter update rejected: 'alpha' out of range"));
+  CHECK(has_log("[ERROR] ERR_RUN_101: numeric fault"));
+  CHECK(has_log("pipeline 'filter_imu', 1 time(s)"));
   std::puts("ok");
   return 0;
 }

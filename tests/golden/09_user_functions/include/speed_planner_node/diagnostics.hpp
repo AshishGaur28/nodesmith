@@ -25,6 +25,7 @@ class SpeedPlannerNodeDiagnostics {
 
  private:
   void drain();
+  void log(r2d::Code code, const char * who, std::size_t count);
 
   rclcpp::Node & node_;
   SpeedPlannerNodeEngine & engine_;

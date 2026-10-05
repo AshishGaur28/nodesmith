@@ -2,6 +2,8 @@
 // IR hash: 4cf0ab3bfb960372eb610d726663d31cc3398467f9943166b1a439e3df7b809d
 #include "imu_filter_node/imu_filter_node_node.hpp"
 
+#include <rclcpp_components/register_node_macro.hpp>
+
 namespace sensors::chassis {
 
 ImuFilterNode::ImuFilterNode(const rclcpp::NodeOptions & options)
@@ -14,6 +16,11 @@ ImuFilterNode::ImuFilterNode(const rclcpp::NodeOptions & options)
 
   // Startup pipelines run once, after the node is operational (SPEC-02 section 7).
   interfaces_.start();
+
+  RCLCPP_INFO(get_logger(), "started");
 }
 
 }  // namespace sensors::chassis
+
+// Makes the node loadable into a component container (`ros2 component load`).
+RCLCPP_COMPONENTS_REGISTER_NODE(sensors::chassis::ImuFilterNode)

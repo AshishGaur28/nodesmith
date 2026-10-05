@@ -120,7 +120,9 @@ def _message_packages(ir: dict) -> tuple[list[str], list[str]]:
         }
     )
     packages = {split_type(t)[0] for t in types}
-    depends = sorted({"rclcpp", "diagnostic_msgs", "rcl_interfaces", *packages})
+    depends = sorted(
+        {"rclcpp", "rclcpp_components", "diagnostic_msgs", "rcl_interfaces", *packages}
+    )
     return depends, sorted({message_header(t) for t in types})
 
 
@@ -176,7 +178,7 @@ def _node_files(ir: dict, pipelines: list[PipelineInfo], hash_: str) -> dict:
             constructor_head=constructor(
                 f"{class_name}Parameters",
                 ["rclcpp::Node & node", f"{class_name}Engine & engine"],
-                ["engine_(engine)"],
+                ["engine_(engine)", "logger_(node.get_logger())"],
             ),
             on_set_head=signature(
                 f"rcl_interfaces::msg::SetParametersResult {class_name}Parameters::on_set(",
@@ -199,6 +201,7 @@ def _node_files(ir: dict, pipelines: list[PipelineInfo], hash_: str) -> dict:
         "src/main.cpp": render("main.cpp.j2"),
         "CMakeLists.txt": render(
             "CMakeLists.txt.j2",
+            plugin=f"{shared['ns']}::{class_name}",
             depends=depends,
             has_user_logic=has_user_logic(ir),
             has_params=has_params,

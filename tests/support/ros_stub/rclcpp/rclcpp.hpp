@@ -3,7 +3,9 @@
 // glue compiles against those signatures and behaves, not that real rclcpp accepts it. The Jazzy CI job is the real check.
 #pragma once
 #include <chrono>
+#include <cstdarg>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <functional>
 #include <map>
@@ -87,8 +89,24 @@ struct OnSetParametersCallbackHandle {
   std::function<rcl_interfaces::msg::SetParametersResult(const std::vector<Parameter> &)> callback;
 };
 
+// Logging: the stand-in keeps every line (`log_lines()`) so tests can look at it, and prints nothing.
+class Logger {};
+inline std::vector<std::string> & log_lines() { static std::vector<std::string> lines; return lines; }
+inline void stub_log(const char * level, const char * format, ...) {
+  char text[512];
+  va_list arguments;
+  va_start(arguments, format);
+  std::vsnprintf(text, sizeof text, format, arguments);
+  va_end(arguments);
+  log_lines().push_back(std::string("[") + level + "] " + text);
+}
+#define RCLCPP_INFO(logger, ...) ((void)(logger), ::rclcpp::stub_log("INFO", __VA_ARGS__))
+#define RCLCPP_WARN(logger, ...) ((void)(logger), ::rclcpp::stub_log("WARN", __VA_ARGS__))
+#define RCLCPP_ERROR(logger, ...) ((void)(logger), ::rclcpp::stub_log("ERROR", __VA_ARGS__))
+
 class Node {
  public:
+  Logger get_logger() const { return {}; }
   using OnSetParametersCallbackHandle = rclcpp::OnSetParametersCallbackHandle;
   Node(const std::string & name, const std::string & ns, const NodeOptions & = NodeOptions()) : name_(name), ns_(ns) {}
   virtual ~Node() = default;
