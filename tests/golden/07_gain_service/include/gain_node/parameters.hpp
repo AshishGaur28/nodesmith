@@ -5,26 +5,27 @@
 // (SPEC-07 section 3.1).
 #pragma once
 
-#include <vector>
-
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <vector>
 
 #include "gain_node/engine.hpp"
 #include "gain_node/interface_names.hpp"
 #include "gain_node/ros_binding.hpp"
 
-namespace processing {
+namespace processing
+{
 
-class GainNodeParameters {
- public:
+class GainNodeParameters
+{
+public:
   // Throws rclcpp::exceptions::InvalidParameterValueException when a starting value is invalid:
   // the node then refuses to start.
   GainNodeParameters(rclcpp::Node & node, GainNodeEngine & engine);
   GainNodeParameters(const GainNodeParameters &) = delete;
   GainNodeParameters & operator=(const GainNodeParameters &) = delete;
 
- private:
+private:
   rcl_interfaces::msg::SetParametersResult on_set(const std::vector<rclcpp::Parameter> & updates);
 
   GainNodeEngine & engine_;

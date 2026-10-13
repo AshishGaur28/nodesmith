@@ -4,26 +4,27 @@
 // (SPEC-12 section 7).
 #pragma once
 
-#include <memory>
-
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/key_value.hpp>
+#include <memory>
 #include <rclcpp/rclcpp.hpp>
 
 #include "speed_planner_node/engine.hpp"
 #include "speed_planner_node/interface_names.hpp"
 #include "speed_planner_node/ros_binding.hpp"
 
-namespace planning {
+namespace planning
+{
 
-class SpeedPlannerNodeDiagnostics {
- public:
+class SpeedPlannerNodeDiagnostics
+{
+public:
   SpeedPlannerNodeDiagnostics(rclcpp::Node & node, SpeedPlannerNodeEngine & engine);
   SpeedPlannerNodeDiagnostics(const SpeedPlannerNodeDiagnostics &) = delete;
   SpeedPlannerNodeDiagnostics & operator=(const SpeedPlannerNodeDiagnostics &) = delete;
 
- private:
+private:
   void drain();
   void log(r2d::Code code, const char * who, std::size_t count);
 

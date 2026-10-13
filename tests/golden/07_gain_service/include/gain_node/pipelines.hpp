@@ -12,19 +12,23 @@
 
 #include "gain_node/runtime.hpp"
 
-namespace processing {
+namespace processing
+{
 
-struct Params {
+struct Params
+{
   double max_gain{10.0};
 };
 
-struct State {
+struct State
+{
   double gain{1.0};
 };
 
 // One validation function for the initial values and for every update, so both obey the same
 // rules.
-inline std::optional<std::string> validate([[maybe_unused]] const Params & p) {
+inline std::optional<std::string> validate([[maybe_unused]] const Params & p)
+{
   if (!(p.max_gain >= 0.0)) {
     return std::string("'max_gain' out of range [0.0, inf]");
   }
@@ -34,18 +38,17 @@ inline std::optional<std::string> validate([[maybe_unused]] const Params & p) {
 
 // Pipeline `apply_gain` (SPEC-02 §7 steps 1-4): evaluates and stages; the caller commits and
 // publishes.
-struct ApplyGainResult {
+struct ApplyGainResult
+{
   double out__output_pub__data{};
 };
 
 template <class In>
 inline bool eval_apply_gain(
-    [[maybe_unused]] const In & in,
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] const State & state,
-    [[maybe_unused]] double now_sec,
-    [[maybe_unused]] double dt_sec,
-    ApplyGainResult & out) {
+  [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
+  [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
+  [[maybe_unused]] double dt_sec, ApplyGainResult & out)
+{
   bool fault = false;
 
   const double v_scaled = (in.data * state.gain);
@@ -61,18 +64,17 @@ inline bool eval_apply_gain(
 
 // Pipeline `handle_get` (SPEC-02 §7 steps 1-4): evaluates and stages; the caller commits and
 // publishes.
-struct HandleGetResult {
+struct HandleGetResult
+{
   double out__res__gain{};
 };
 
 template <class In>
 inline bool eval_handle_get(
-    [[maybe_unused]] const In & in,
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] const State & state,
-    [[maybe_unused]] double now_sec,
-    [[maybe_unused]] double dt_sec,
-    HandleGetResult & out) {
+  [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
+  [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
+  [[maybe_unused]] double dt_sec, HandleGetResult & out)
+{
   bool fault = false;
 
   const double n0 = state.gain;
@@ -88,7 +90,8 @@ inline bool eval_handle_get(
 
 // Pipeline `handle_reset` (SPEC-02 §7 steps 1-4): evaluates and stages; the caller commits and
 // publishes.
-struct HandleResetResult {
+struct HandleResetResult
+{
   double next_gain{};
   std::string out__res__message{};
   bool out__res__success{};
@@ -96,12 +99,10 @@ struct HandleResetResult {
 
 template <class In>
 inline bool eval_handle_reset(
-    [[maybe_unused]] const In & in,
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] const State & state,
-    [[maybe_unused]] double now_sec,
-    [[maybe_unused]] double dt_sec,
-    HandleResetResult & out) {
+  [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
+  [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
+  [[maybe_unused]] double dt_sec, HandleResetResult & out)
+{
   bool fault = false;
 
   const double n0 = 1.0;
@@ -121,7 +122,8 @@ inline bool eval_handle_reset(
 
 // Pipeline `handle_set` (SPEC-02 §7 steps 1-4): evaluates and stages; the caller commits and
 // publishes.
-struct HandleSetResult {
+struct HandleSetResult
+{
   double next_gain{};
   bool out__res__accepted{};
   double out__res__applied{};
@@ -129,12 +131,10 @@ struct HandleSetResult {
 
 template <class In>
 inline bool eval_handle_set(
-    [[maybe_unused]] const In & in,
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] const State & state,
-    [[maybe_unused]] double now_sec,
-    [[maybe_unused]] double dt_sec,
-    HandleSetResult & out) {
+  [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
+  [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
+  [[maybe_unused]] double dt_sec, HandleSetResult & out)
+{
   bool fault = false;
 
   const bool v_ok = ((in.gain >= 0.0) && (in.gain <= params.max_gain));

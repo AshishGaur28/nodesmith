@@ -5,19 +5,19 @@
 #pragma once
 
 #include <memory>
-
 #include <rclcpp/rclcpp.hpp>
-
 #include <std_msgs/msg/float64.hpp>
 
 #include "echo_node/engine.hpp"
 #include "echo_node/interface_names.hpp"
 #include "echo_node/ros_binding.hpp"
 
-namespace demo {
+namespace demo
+{
 
-class EchoNodeInterfaces {
- public:
+class EchoNodeInterfaces
+{
+public:
   EchoNodeInterfaces(rclcpp::Node & node, EchoNodeEngine & engine);
   EchoNodeInterfaces(const EchoNodeInterfaces &) = delete;
   EchoNodeInterfaces & operator=(const EchoNodeInterfaces &) = delete;
@@ -26,7 +26,7 @@ class EchoNodeInterfaces {
   // (SPEC-02 section 7).
   void start();
 
- private:
+private:
   void run_echo(const std_msgs::msg::Float64 & in);
 
   rclcpp::Node & node_;

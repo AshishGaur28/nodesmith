@@ -8,7 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace sensors::chassis::names {
+namespace sensors::chassis::names
+{
 
 // The node
 inline constexpr char kNodeName[] = "imu_filter_node";

@@ -4,16 +4,19 @@
 
 #include <cstdlib>
 
-namespace planning {
+namespace planning
+{
 
 SpeedPlannerNodeApp::SpeedPlannerNodeApp(int argc, char ** argv)
-    : context_(argc, argv),
-      node_(std::make_shared<SpeedPlannerNode>()),
-      executor_(binding::make_single_threaded_executor()) {
+: context_(argc, argv),
+  node_(std::make_shared<SpeedPlannerNode>()),
+  executor_(binding::make_single_threaded_executor())
+{
   executor_->add_node(node_);
 }
 
-int SpeedPlannerNodeApp::run() {
+int SpeedPlannerNodeApp::run()
+{
   executor_->spin();
   return EXIT_SUCCESS;
 }

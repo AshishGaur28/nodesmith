@@ -5,26 +5,27 @@
 // (SPEC-07 section 3.1).
 #pragma once
 
-#include <vector>
-
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <vector>
 
 #include "speed_planner_node/engine.hpp"
 #include "speed_planner_node/interface_names.hpp"
 #include "speed_planner_node/ros_binding.hpp"
 
-namespace planning {
+namespace planning
+{
 
-class SpeedPlannerNodeParameters {
- public:
+class SpeedPlannerNodeParameters
+{
+public:
   // Throws rclcpp::exceptions::InvalidParameterValueException when a starting value is invalid:
   // the node then refuses to start.
   SpeedPlannerNodeParameters(rclcpp::Node & node, SpeedPlannerNodeEngine & engine);
   SpeedPlannerNodeParameters(const SpeedPlannerNodeParameters &) = delete;
   SpeedPlannerNodeParameters & operator=(const SpeedPlannerNodeParameters &) = delete;
 
- private:
+private:
   rcl_interfaces::msg::SetParametersResult on_set(const std::vector<rclcpp::Parameter> & updates);
 
   SpeedPlannerNodeEngine & engine_;

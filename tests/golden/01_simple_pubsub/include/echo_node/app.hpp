@@ -5,16 +5,17 @@
 #pragma once
 
 #include <memory>
-
 #include <rclcpp/rclcpp.hpp>
 
 #include "echo_node/echo_node_node.hpp"
 #include "echo_node/ros_binding.hpp"
 
-namespace demo {
+namespace demo
+{
 
-class EchoNodeApp {
- public:
+class EchoNodeApp
+{
+public:
   EchoNodeApp(int argc, char ** argv);
   EchoNodeApp(const EchoNodeApp &) = delete;
   EchoNodeApp & operator=(const EchoNodeApp &) = delete;
@@ -22,9 +23,10 @@ class EchoNodeApp {
   // Spins until the context is shut down (for example by Ctrl-C). Returns the exit status.
   int run();
 
- private:
+private:
   // Initialises ROS first and shuts it down last, after the node and the executor are gone.
-  struct RosContext {
+  struct RosContext
+  {
     RosContext(int argc, char ** argv) { binding::init(argc, argv); }
     ~RosContext() { binding::shutdown(); }
     RosContext(const RosContext &) = delete;

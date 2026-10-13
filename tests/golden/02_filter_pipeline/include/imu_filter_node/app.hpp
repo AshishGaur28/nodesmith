@@ -5,16 +5,17 @@
 #pragma once
 
 #include <memory>
-
 #include <rclcpp/rclcpp.hpp>
 
 #include "imu_filter_node/imu_filter_node_node.hpp"
 #include "imu_filter_node/ros_binding.hpp"
 
-namespace sensors::chassis {
+namespace sensors::chassis
+{
 
-class ImuFilterNodeApp {
- public:
+class ImuFilterNodeApp
+{
+public:
   ImuFilterNodeApp(int argc, char ** argv);
   ImuFilterNodeApp(const ImuFilterNodeApp &) = delete;
   ImuFilterNodeApp & operator=(const ImuFilterNodeApp &) = delete;
@@ -22,9 +23,10 @@ class ImuFilterNodeApp {
   // Spins until the context is shut down (for example by Ctrl-C). Returns the exit status.
   int run();
 
- private:
+private:
   // Initialises ROS first and shuts it down last, after the node and the executor are gone.
-  struct RosContext {
+  struct RosContext
+  {
     RosContext(int argc, char ** argv) { binding::init(argc, argv); }
     ~RosContext() { binding::shutdown(); }
     RosContext(const RosContext &) = delete;

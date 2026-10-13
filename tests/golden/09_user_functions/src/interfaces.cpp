@@ -2,33 +2,34 @@
 // IR hash: a6de20eed059bc5dd26c590e4a2a3a072505576f0499346f76bb5f5b68d5a332
 #include "speed_planner_node/interfaces.hpp"
 
-namespace planning {
+namespace planning
+{
 
 // Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
 // picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
 SpeedPlannerNodeInterfaces::SpeedPlannerNodeInterfaces(
-    rclcpp::Node & node, SpeedPlannerNodeEngine & engine)
-    : node_(node), engine_(engine) {
+  rclcpp::Node & node, SpeedPlannerNodeEngine & engine)
+: node_(node), engine_(engine)
+{
   group_state_domain_1_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   pub_label_pub_ = node_.create_publisher<std_msgs::msg::String>(
-      names::kPubTopicLabelPub,
-      rclcpp::QoS(names::kPubQosDepthLabelPub).reliable().durability_volatile());
+    names::kPubTopicLabelPub,
+    rclcpp::QoS(names::kPubQosDepthLabelPub).reliable().durability_volatile());
   pub_speed_pub_ = node_.create_publisher<std_msgs::msg::Float64>(
-      names::kPubTopicSpeedPub,
-      rclcpp::QoS(names::kPubQosDepthSpeedPub).reliable().durability_volatile());
+    names::kPubTopicSpeedPub,
+    rclcpp::QoS(names::kPubQosDepthSpeedPub).reliable().durability_volatile());
 
   sub_range_sub_plan_ = binding::create_subscription<std_msgs::msg::Float64>(
-      node_,
-      names::kSubTopicRangeSub,
-      rclcpp::QoS(names::kSubQosDepthRangeSub).reliable().durability_volatile(),
-      [this](std_msgs::msg::Float64::ConstSharedPtr msg) { run_plan(*msg); },
-      group_state_domain_1_);
+    node_, names::kSubTopicRangeSub,
+    rclcpp::QoS(names::kSubQosDepthRangeSub).reliable().durability_volatile(),
+    [this](std_msgs::msg::Float64::ConstSharedPtr msg) { run_plan(*msg); }, group_state_domain_1_);
 }
 
 void SpeedPlannerNodeInterfaces::start() {}
 
-void SpeedPlannerNodeInterfaces::run_plan(const std_msgs::msg::Float64 & in) {
+void SpeedPlannerNodeInterfaces::run_plan(const std_msgs::msg::Float64 & in)
+{
   const auto run = engine_.enter();
   if (!run) {
     return;

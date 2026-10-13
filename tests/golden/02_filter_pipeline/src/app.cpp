@@ -4,16 +4,19 @@
 
 #include <cstdlib>
 
-namespace sensors::chassis {
+namespace sensors::chassis
+{
 
 ImuFilterNodeApp::ImuFilterNodeApp(int argc, char ** argv)
-    : context_(argc, argv),
-      node_(std::make_shared<ImuFilterNode>()),
-      executor_(binding::make_single_threaded_executor()) {
+: context_(argc, argv),
+  node_(std::make_shared<ImuFilterNode>()),
+  executor_(binding::make_single_threaded_executor())
+{
   executor_->add_node(node_);
 }
 
-int ImuFilterNodeApp::run() {
+int ImuFilterNodeApp::run()
+{
   executor_->spin();
   return EXIT_SUCCESS;
 }

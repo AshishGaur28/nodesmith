@@ -5,26 +5,27 @@
 // (SPEC-07 section 3.1).
 #pragma once
 
-#include <vector>
-
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <vector>
 
 #include "link_watchdog_node/engine.hpp"
 #include "link_watchdog_node/interface_names.hpp"
 #include "link_watchdog_node/ros_binding.hpp"
 
-namespace monitoring {
+namespace monitoring
+{
 
-class LinkWatchdogNodeParameters {
- public:
+class LinkWatchdogNodeParameters
+{
+public:
   // Throws rclcpp::exceptions::InvalidParameterValueException when a starting value is invalid:
   // the node then refuses to start.
   LinkWatchdogNodeParameters(rclcpp::Node & node, LinkWatchdogNodeEngine & engine);
   LinkWatchdogNodeParameters(const LinkWatchdogNodeParameters &) = delete;
   LinkWatchdogNodeParameters & operator=(const LinkWatchdogNodeParameters &) = delete;
 
- private:
+private:
   rcl_interfaces::msg::SetParametersResult on_set(const std::vector<rclcpp::Parameter> & updates);
 
   LinkWatchdogNodeEngine & engine_;

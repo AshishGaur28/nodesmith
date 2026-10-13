@@ -8,7 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace processing::names {
+namespace processing::names
+{
 
 // The node
 inline constexpr char kNodeName[] = "gain_node";

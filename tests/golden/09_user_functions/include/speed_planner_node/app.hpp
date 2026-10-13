@@ -5,16 +5,17 @@
 #pragma once
 
 #include <memory>
-
 #include <rclcpp/rclcpp.hpp>
 
-#include "speed_planner_node/speed_planner_node_node.hpp"
 #include "speed_planner_node/ros_binding.hpp"
+#include "speed_planner_node/speed_planner_node_node.hpp"
 
-namespace planning {
+namespace planning
+{
 
-class SpeedPlannerNodeApp {
- public:
+class SpeedPlannerNodeApp
+{
+public:
   SpeedPlannerNodeApp(int argc, char ** argv);
   SpeedPlannerNodeApp(const SpeedPlannerNodeApp &) = delete;
   SpeedPlannerNodeApp & operator=(const SpeedPlannerNodeApp &) = delete;
@@ -22,9 +23,10 @@ class SpeedPlannerNodeApp {
   // Spins until the context is shut down (for example by Ctrl-C). Returns the exit status.
   int run();
 
- private:
+private:
   // Initialises ROS first and shuts it down last, after the node and the executor are gone.
-  struct RosContext {
+  struct RosContext
+  {
     RosContext(int argc, char ** argv) { binding::init(argc, argv); }
     ~RosContext() { binding::shutdown(); }
     RosContext(const RosContext &) = delete;

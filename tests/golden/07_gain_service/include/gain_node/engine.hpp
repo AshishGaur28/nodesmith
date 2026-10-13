@@ -13,10 +13,12 @@
 #include "gain_node/pipelines.hpp"
 #include "gain_node/runtime.hpp"
 
-namespace processing {
+namespace processing
+{
 
-class GainNodeEngine {
- public:
+class GainNodeEngine
+{
+public:
   GainNodeEngine() : params_(Params{}) {}
   GainNodeEngine(const GainNodeEngine &) = delete;
   GainNodeEngine & operator=(const GainNodeEngine &) = delete;
@@ -25,7 +27,8 @@ class GainNodeEngine {
   // Both validate. A rejected value is returned as the reason and nothing changes
   // (SPEC-07 section 3.1).
 
-  std::optional<std::string> start(const Params & initial) {
+  std::optional<std::string> start(const Params & initial)
+  {
     if (auto why = validate(initial)) {
       return why;
     }
@@ -35,7 +38,8 @@ class GainNodeEngine {
 
   Params parameters() { return *params_.acquire(); }
 
-  std::optional<std::string> update(const Params & next) {
+  std::optional<std::string> update(const Params & next)
+  {
     if (auto why = validate(next)) {
       return why;
     }
@@ -60,7 +64,8 @@ class GainNodeEngine {
   void report(r2d::Code code, const char * who) noexcept { diag_.report(code, who); }
 
   template <class Emit>
-  void drain_diagnostics(Emit && emit) {
+  void drain_diagnostics(Emit && emit)
+  {
     diag_.drain(emit);
   }
 
@@ -69,7 +74,8 @@ class GainNodeEngine {
   // fault stopped it: the fault is reported as ERR_RUN_101 and nothing is committed.
 
   template <class In>
-  std::optional<ApplyGainResult> run_apply_gain(const r2d::RunGate::Scope &, const In & in) {
+  std::optional<ApplyGainResult> run_apply_gain(const r2d::RunGate::Scope &, const In & in)
+  {
     // One snapshot for the whole execution (SPEC-12 section 5).
     const auto params = params_.acquire();
 
@@ -84,7 +90,8 @@ class GainNodeEngine {
   }
 
   template <class In>
-  std::optional<HandleGetResult> run_handle_get(const r2d::RunGate::Scope &, const In & in) {
+  std::optional<HandleGetResult> run_handle_get(const r2d::RunGate::Scope &, const In & in)
+  {
     // One snapshot for the whole execution (SPEC-12 section 5).
     const auto params = params_.acquire();
 
@@ -99,7 +106,8 @@ class GainNodeEngine {
   }
 
   template <class In>
-  std::optional<HandleResetResult> run_handle_reset(const r2d::RunGate::Scope &, const In & in) {
+  std::optional<HandleResetResult> run_handle_reset(const r2d::RunGate::Scope &, const In & in)
+  {
     // One snapshot for the whole execution (SPEC-12 section 5).
     const auto params = params_.acquire();
 
@@ -117,7 +125,8 @@ class GainNodeEngine {
   }
 
   template <class In>
-  std::optional<HandleSetResult> run_handle_set(const r2d::RunGate::Scope &, const In & in) {
+  std::optional<HandleSetResult> run_handle_set(const r2d::RunGate::Scope &, const In & in)
+  {
     // One snapshot for the whole execution (SPEC-12 section 5).
     const auto params = params_.acquire();
 
@@ -134,7 +143,7 @@ class GainNodeEngine {
     return r;
   }
 
- private:
+private:
   // One slot per thread (1), the current one and a free one (SPEC-12 section 5).
   r2d::SnapshotRing<Params, 3> params_;
 

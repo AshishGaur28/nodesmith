@@ -73,7 +73,8 @@ manifest file → ingest → schema → rules → semantic checks + lowering →
 | interfaces.py | The ROS adapter: publishers, subscriptions, services, timers, and the handlers that call the engine and publish.
 | package.py | Assembles every file of the node package from the templates; writes it atomically.
 | logic.py | The user's functions: `logic_api.hpp`, the weak placeholders, the starter `logic.cpp` and reading the user's `logic/` folder.
-| layout.py | The layout rules of the generated code (100 columns) and the helpers that wrap calls, signatures and expressions to them.
+| layout.py | Helpers that wrap calls, signatures and expressions while the code is written.
+| format.py | Formats every generated C++ file with the pinned `clang-format` and the ROS 2 style (`templates/cpp_rclcpp/clang-format`, also written into each package as `.clang-format`).
 | naming.py, literals.py | Names, type mappings and C++ literals.
 | templates.py | Where the templates are, and the shared `runtime.hpp`.
 |===

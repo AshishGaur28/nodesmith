@@ -12,13 +12,15 @@
 #include "counter_node/interfaces.hpp"
 #include "counter_node/parameters.hpp"
 
-namespace demo {
+namespace demo
+{
 
-class CounterNode : public rclcpp::Node {
- public:
+class CounterNode : public rclcpp::Node
+{
+public:
   explicit CounterNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
 
- private:
+private:
   CounterNodeEngine engine_;
   CounterNodeParameters parameters_;
   CounterNodeInterfaces interfaces_;

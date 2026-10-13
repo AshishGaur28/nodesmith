@@ -13,10 +13,12 @@
 #include "counter_node/pipelines.hpp"
 #include "counter_node/runtime.hpp"
 
-namespace demo {
+namespace demo
+{
 
-class CounterNodeEngine {
- public:
+class CounterNodeEngine
+{
+public:
   CounterNodeEngine() : params_(Params{}) {}
   CounterNodeEngine(const CounterNodeEngine &) = delete;
   CounterNodeEngine & operator=(const CounterNodeEngine &) = delete;
@@ -25,7 +27,8 @@ class CounterNodeEngine {
   // Both validate. A rejected value is returned as the reason and nothing changes
   // (SPEC-07 section 3.1).
 
-  std::optional<std::string> start(const Params & initial) {
+  std::optional<std::string> start(const Params & initial)
+  {
     if (auto why = validate(initial)) {
       return why;
     }
@@ -35,7 +38,8 @@ class CounterNodeEngine {
 
   Params parameters() { return *params_.acquire(); }
 
-  std::optional<std::string> update(const Params & next) {
+  std::optional<std::string> update(const Params & next)
+  {
     if (auto why = validate(next)) {
       return why;
     }
@@ -60,7 +64,8 @@ class CounterNodeEngine {
   void report(r2d::Code code, const char * who) noexcept { diag_.report(code, who); }
 
   template <class Emit>
-  void drain_diagnostics(Emit && emit) {
+  void drain_diagnostics(Emit && emit)
+  {
     diag_.drain(emit);
   }
 
@@ -69,7 +74,8 @@ class CounterNodeEngine {
   // fault stopped it: the fault is reported as ERR_RUN_101 and nothing is committed.
 
   template <class In>
-  std::optional<ResetResult> run_reset(const r2d::RunGate::Scope &, const In & in) {
+  std::optional<ResetResult> run_reset(const r2d::RunGate::Scope &, const In & in)
+  {
     // One snapshot for the whole execution (SPEC-12 section 5).
     const auto params = params_.acquire();
 
@@ -86,7 +92,8 @@ class CounterNodeEngine {
     return r;
   }
 
-  std::optional<TickResult> run_tick(const r2d::RunGate::Scope &) {
+  std::optional<TickResult> run_tick(const r2d::RunGate::Scope &)
+  {
     // One snapshot for the whole execution (SPEC-12 section 5).
     const auto params = params_.acquire();
 
@@ -103,7 +110,7 @@ class CounterNodeEngine {
     return r;
   }
 
- private:
+private:
   // One slot per thread (1), the current one and a free one (SPEC-12 section 5).
   r2d::SnapshotRing<Params, 3> params_;
 

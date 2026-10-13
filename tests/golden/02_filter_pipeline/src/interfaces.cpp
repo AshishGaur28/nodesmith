@@ -2,32 +2,34 @@
 // IR hash: 4cf0ab3bfb960372eb610d726663d31cc3398467f9943166b1a439e3df7b809d
 #include "imu_filter_node/interfaces.hpp"
 
-namespace sensors::chassis {
+namespace sensors::chassis
+{
 
 // Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
 // picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
 ImuFilterNodeInterfaces::ImuFilterNodeInterfaces(rclcpp::Node & node, ImuFilterNodeEngine & engine)
-    : node_(node), engine_(engine) {
+: node_(node), engine_(engine)
+{
   group_state_domain_1_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   pub_filtered_imu_pub_ = node_.create_publisher<sensor_msgs::msg::Imu>(
-      names::kPubTopicFilteredImuPub,
-      rclcpp::QoS(names::kPubQosDepthFilteredImuPub).reliable().durability_volatile());
+    names::kPubTopicFilteredImuPub,
+    rclcpp::QoS(names::kPubQosDepthFilteredImuPub).reliable().durability_volatile());
   pub_status_pub_ = node_.create_publisher<std_msgs::msg::String>(
-      names::kPubTopicStatusPub,
-      rclcpp::QoS(names::kPubQosDepthStatusPub).reliable().durability_volatile());
+    names::kPubTopicStatusPub,
+    rclcpp::QoS(names::kPubQosDepthStatusPub).reliable().durability_volatile());
 
   sub_raw_imu_sub_filter_imu_ = binding::create_subscription<sensor_msgs::msg::Imu>(
-      node_,
-      names::kSubTopicRawImuSub,
-      rclcpp::QoS(names::kSubQosDepthRawImuSub).best_effort().durability_volatile(),
-      [this](sensor_msgs::msg::Imu::ConstSharedPtr msg) { run_filter_imu(*msg); },
-      group_state_domain_1_);
+    node_, names::kSubTopicRawImuSub,
+    rclcpp::QoS(names::kSubQosDepthRawImuSub).best_effort().durability_volatile(),
+    [this](sensor_msgs::msg::Imu::ConstSharedPtr msg) { run_filter_imu(*msg); },
+    group_state_domain_1_);
 }
 
 void ImuFilterNodeInterfaces::start() {}
 
-void ImuFilterNodeInterfaces::run_filter_imu(const sensor_msgs::msg::Imu & in) {
+void ImuFilterNodeInterfaces::run_filter_imu(const sensor_msgs::msg::Imu & in)
+{
   const auto run = engine_.enter();
   if (!run) {
     return;

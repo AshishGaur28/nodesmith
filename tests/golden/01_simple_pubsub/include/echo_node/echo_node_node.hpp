@@ -12,13 +12,15 @@
 #include "echo_node/interfaces.hpp"
 #include "echo_node/parameters.hpp"
 
-namespace demo {
+namespace demo
+{
 
-class EchoNode : public rclcpp::Node {
- public:
+class EchoNode : public rclcpp::Node
+{
+public:
   explicit EchoNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
 
- private:
+private:
   EchoNodeEngine engine_;
   EchoNodeParameters parameters_;
   EchoNodeInterfaces interfaces_;

@@ -12,20 +12,24 @@
 
 #include "imu_filter_node/runtime.hpp"
 
-namespace sensors::chassis {
+namespace sensors::chassis
+{
 
-struct Params {
+struct Params
+{
   double alpha{0.85};
   double max_accel{20.0};
 };
 
-struct State {
+struct State
+{
   double prev_z{0.0};
 };
 
 // One validation function for the initial values and for every update, so both obey the same
 // rules.
-inline std::optional<std::string> validate([[maybe_unused]] const Params & p) {
+inline std::optional<std::string> validate([[maybe_unused]] const Params & p)
+{
   if (!(p.alpha >= 0.0 && p.alpha <= 1.0)) {
     return std::string("'alpha' out of range [0.0, 1.0]");
   }
@@ -39,7 +43,8 @@ inline std::optional<std::string> validate([[maybe_unused]] const Params & p) {
 
 // Pipeline `filter_imu` (SPEC-02 §7 steps 1-4): evaluates and stages; the caller commits and
 // publishes.
-struct FilterImuResult {
+struct FilterImuResult
+{
   double next_prev_z{};
   std::string out__filtered_imu_pub__header__frame_id{};
   double out__filtered_imu_pub__linear_acceleration__z{};
@@ -48,12 +53,10 @@ struct FilterImuResult {
 
 template <class In>
 inline bool eval_filter_imu(
-    [[maybe_unused]] const In & in,
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] const State & state,
-    [[maybe_unused]] double now_sec,
-    [[maybe_unused]] double dt_sec,
-    FilterImuResult & out) {
+  [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
+  [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
+  [[maybe_unused]] double dt_sec, FilterImuResult & out)
+{
   bool fault = false;
 
   const double v_z = r2d::low_pass(in.linear_acceleration.z, state.prev_z, params.alpha, fault);

@@ -12,34 +12,37 @@
 
 #include "echo_node/runtime.hpp"
 
-namespace demo {
+namespace demo
+{
 
-struct Params {
+struct Params
+{
 };
 
-struct State {
+struct State
+{
 };
 
 // One validation function for the initial values and for every update, so both obey the same
 // rules.
-inline std::optional<std::string> validate([[maybe_unused]] const Params & p) {
+inline std::optional<std::string> validate([[maybe_unused]] const Params & p)
+{
   return std::nullopt;
 }
 
 // Pipeline `echo` (SPEC-02 §7 steps 1-4): evaluates and stages; the caller commits and
 // publishes.
-struct EchoResult {
+struct EchoResult
+{
   double out__out_pub__data{};
 };
 
 template <class In>
 inline bool eval_echo(
-    [[maybe_unused]] const In & in,
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] const State & state,
-    [[maybe_unused]] double now_sec,
-    [[maybe_unused]] double dt_sec,
-    EchoResult & out) {
+  [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
+  [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
+  [[maybe_unused]] double dt_sec, EchoResult & out)
+{
   bool fault = false;
 
   const double v_doubled = (in.data * 2.0);

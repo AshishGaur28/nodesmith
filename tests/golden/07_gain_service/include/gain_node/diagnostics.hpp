@@ -4,26 +4,27 @@
 // (SPEC-12 section 7).
 #pragma once
 
-#include <memory>
-
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/key_value.hpp>
+#include <memory>
 #include <rclcpp/rclcpp.hpp>
 
 #include "gain_node/engine.hpp"
 #include "gain_node/interface_names.hpp"
 #include "gain_node/ros_binding.hpp"
 
-namespace processing {
+namespace processing
+{
 
-class GainNodeDiagnostics {
- public:
+class GainNodeDiagnostics
+{
+public:
   GainNodeDiagnostics(rclcpp::Node & node, GainNodeEngine & engine);
   GainNodeDiagnostics(const GainNodeDiagnostics &) = delete;
   GainNodeDiagnostics & operator=(const GainNodeDiagnostics &) = delete;
 
- private:
+private:
   void drain();
   void log(r2d::Code code, const char * who, std::size_t count);
 

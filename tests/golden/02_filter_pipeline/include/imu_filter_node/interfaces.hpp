@@ -5,9 +5,7 @@
 #pragma once
 
 #include <memory>
-
 #include <rclcpp/rclcpp.hpp>
-
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/string.hpp>
 
@@ -15,10 +13,12 @@
 #include "imu_filter_node/interface_names.hpp"
 #include "imu_filter_node/ros_binding.hpp"
 
-namespace sensors::chassis {
+namespace sensors::chassis
+{
 
-class ImuFilterNodeInterfaces {
- public:
+class ImuFilterNodeInterfaces
+{
+public:
   ImuFilterNodeInterfaces(rclcpp::Node & node, ImuFilterNodeEngine & engine);
   ImuFilterNodeInterfaces(const ImuFilterNodeInterfaces &) = delete;
   ImuFilterNodeInterfaces & operator=(const ImuFilterNodeInterfaces &) = delete;
@@ -27,7 +27,7 @@ class ImuFilterNodeInterfaces {
   // (SPEC-02 section 7).
   void start();
 
- private:
+private:
   void run_filter_imu(const sensor_msgs::msg::Imu & in);
 
   rclcpp::Node & node_;

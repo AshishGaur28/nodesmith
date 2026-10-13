@@ -6,11 +6,13 @@
 #include <string>
 #include <utility>
 
-namespace planning {
+namespace planning
+{
 
 SpeedPlannerNodeParameters::SpeedPlannerNodeParameters(
-    rclcpp::Node & node, SpeedPlannerNodeEngine & engine)
-    : engine_(engine), logger_(node.get_logger()) {
+  rclcpp::Node & node, SpeedPlannerNodeEngine & engine)
+: engine_(engine), logger_(node.get_logger())
+{
   // The effective values include launch-file and command-line overrides.
   Params initial;
 
@@ -21,21 +23,22 @@ SpeedPlannerNodeParameters::SpeedPlannerNodeParameters(
   d_speed_limit.floating_point_range[0].to_value = std::numeric_limits<double>::max();
   d_speed_limit.floating_point_range[0].step = 0.0;
   initial.speed_limit = node.declare_parameter<double>(
-      names::kParamSpeedLimit, static_cast<double>(2.0), d_speed_limit);
+    names::kParamSpeedLimit, static_cast<double>(2.0), d_speed_limit);
 
   if (auto why = engine_.start(initial)) {
     throw rclcpp::exceptions::InvalidParameterValueException(*why);  // refuse to start
   }
 
   handle_ = binding::add_parameter_callback(
-      node, [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
+    node, [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
 }
 
 // Runs on the parameter-service thread, concurrently with the pipelines. It never touches state
 // and never blocks a pipeline: the engine builds a whole new snapshot and swaps it in
 // (SPEC-07 section 3.1, SPEC-12 section 5).
 rcl_interfaces::msg::SetParametersResult SpeedPlannerNodeParameters::on_set(
-    const std::vector<rclcpp::Parameter> & updates) {
+  const std::vector<rclcpp::Parameter> & updates)
+{
   auto reject = [this](std::string why) {
     RCLCPP_WARN(logger_, "parameter update rejected: %s", why.c_str());
     engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);

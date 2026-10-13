@@ -4,26 +4,27 @@
 // (SPEC-12 section 7).
 #pragma once
 
-#include <memory>
-
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/key_value.hpp>
+#include <memory>
 #include <rclcpp/rclcpp.hpp>
 
 #include "echo_node/engine.hpp"
 #include "echo_node/interface_names.hpp"
 #include "echo_node/ros_binding.hpp"
 
-namespace demo {
+namespace demo
+{
 
-class EchoNodeDiagnostics {
- public:
+class EchoNodeDiagnostics
+{
+public:
   EchoNodeDiagnostics(rclcpp::Node & node, EchoNodeEngine & engine);
   EchoNodeDiagnostics(const EchoNodeDiagnostics &) = delete;
   EchoNodeDiagnostics & operator=(const EchoNodeDiagnostics &) = delete;
 
- private:
+private:
   void drain();
   void log(r2d::Code code, const char * who, std::size_t count);
 

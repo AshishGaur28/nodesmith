@@ -8,16 +8,19 @@
 
 #include "speed_planner_node/logic_api.hpp"
 
-namespace logic {
+namespace logic
+{
 
-namespace {
+namespace
+{
 
-void not_implemented(const char * name) {
+void not_implemented(const char * name)
+{
   std::fprintf(
-      stderr,
-      "nodesmith: logic::%s is not implemented in logic/ "
-      "(or its signature differs from logic_api.hpp)\n",
-      name);
+    stderr,
+    "nodesmith: logic::%s is not implemented in logic/ "
+    "(or its signature differs from logic_api.hpp)\n",
+    name);
 }
 
 }  // namespace
@@ -26,13 +29,15 @@ __attribute__((weak)) void setup() {}
 
 __attribute__((weak)) void teardown() {}
 
-__attribute__((weak)) std::string describe(double, bool & fault) {
+__attribute__((weak)) std::string describe(double, bool & fault)
+{
   [[maybe_unused]] static const bool reported = (not_implemented("describe"), true);
   fault = true;
   return {};
 }
 
-__attribute__((weak)) double plan_speed(double, double, double, bool & fault) {
+__attribute__((weak)) double plan_speed(double, double, double, bool & fault)
+{
   [[maybe_unused]] static const bool reported = (not_implemented("plan_speed"), true);
   fault = true;
   return {};

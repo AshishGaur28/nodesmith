@@ -6,10 +6,12 @@
 #include <string>
 #include <utility>
 
-namespace sensors::chassis {
+namespace sensors::chassis
+{
 
 ImuFilterNodeParameters::ImuFilterNodeParameters(rclcpp::Node & node, ImuFilterNodeEngine & engine)
-    : engine_(engine), logger_(node.get_logger()) {
+: engine_(engine), logger_(node.get_logger())
+{
   // The effective values include launch-file and command-line overrides.
   Params initial;
 
@@ -19,30 +21,31 @@ ImuFilterNodeParameters::ImuFilterNodeParameters(rclcpp::Node & node, ImuFilterN
   d_alpha.floating_point_range[0].from_value = 0.0;
   d_alpha.floating_point_range[0].to_value = 1.0;
   d_alpha.floating_point_range[0].step = 0.0;
-  initial.alpha = node.declare_parameter<double>(
-      names::kParamAlpha, static_cast<double>(0.85), d_alpha);
+  initial.alpha =
+    node.declare_parameter<double>(names::kParamAlpha, static_cast<double>(0.85), d_alpha);
 
   rcl_interfaces::msg::ParameterDescriptor d_max_accel;
   d_max_accel.floating_point_range.resize(1);
   d_max_accel.floating_point_range[0].from_value = 0.0;
   d_max_accel.floating_point_range[0].to_value = std::numeric_limits<double>::max();
   d_max_accel.floating_point_range[0].step = 0.0;
-  initial.max_accel = node.declare_parameter<double>(
-      names::kParamMaxAccel, static_cast<double>(20.0), d_max_accel);
+  initial.max_accel =
+    node.declare_parameter<double>(names::kParamMaxAccel, static_cast<double>(20.0), d_max_accel);
 
   if (auto why = engine_.start(initial)) {
     throw rclcpp::exceptions::InvalidParameterValueException(*why);  // refuse to start
   }
 
   handle_ = binding::add_parameter_callback(
-      node, [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
+    node, [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
 }
 
 // Runs on the parameter-service thread, concurrently with the pipelines. It never touches state
 // and never blocks a pipeline: the engine builds a whole new snapshot and swaps it in
 // (SPEC-07 section 3.1, SPEC-12 section 5).
 rcl_interfaces::msg::SetParametersResult ImuFilterNodeParameters::on_set(
-    const std::vector<rclcpp::Parameter> & updates) {
+  const std::vector<rclcpp::Parameter> & updates)
+{
   auto reject = [this](std::string why) {
     RCLCPP_WARN(logger_, "parameter update rejected: %s", why.c_str());
     engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);

@@ -7,9 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
-
 #include <rclcpp/rclcpp.hpp>
-
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/empty.hpp>
 #include <std_msgs/msg/float64.hpp>
@@ -18,10 +16,12 @@
 #include "link_watchdog_node/interface_names.hpp"
 #include "link_watchdog_node/ros_binding.hpp"
 
-namespace monitoring {
+namespace monitoring
+{
 
-class LinkWatchdogNodeInterfaces {
- public:
+class LinkWatchdogNodeInterfaces
+{
+public:
   LinkWatchdogNodeInterfaces(rclcpp::Node & node, LinkWatchdogNodeEngine & engine);
   LinkWatchdogNodeInterfaces(const LinkWatchdogNodeInterfaces &) = delete;
   LinkWatchdogNodeInterfaces & operator=(const LinkWatchdogNodeInterfaces &) = delete;
@@ -30,7 +30,7 @@ class LinkWatchdogNodeInterfaces {
   // (SPEC-02 section 7).
   void start();
 
- private:
+private:
   void run_boot();
   void run_check_link();
   void run_on_heartbeat(const std_msgs::msg::Empty & in);

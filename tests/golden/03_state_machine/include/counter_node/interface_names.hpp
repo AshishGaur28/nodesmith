@@ -8,7 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace demo::names {
+namespace demo::names
+{
 
 // The node
 inline constexpr char kNodeName[] = "counter_node";

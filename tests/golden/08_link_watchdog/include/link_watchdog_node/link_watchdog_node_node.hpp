@@ -12,13 +12,15 @@
 #include "link_watchdog_node/interfaces.hpp"
 #include "link_watchdog_node/parameters.hpp"
 
-namespace monitoring {
+namespace monitoring
+{
 
-class LinkWatchdogNode : public rclcpp::Node {
- public:
+class LinkWatchdogNode : public rclcpp::Node
+{
+public:
   explicit LinkWatchdogNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
 
- private:
+private:
   LinkWatchdogNodeEngine engine_;
   LinkWatchdogNodeParameters parameters_;
   LinkWatchdogNodeInterfaces interfaces_;

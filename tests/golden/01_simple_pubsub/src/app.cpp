@@ -4,16 +4,19 @@
 
 #include <cstdlib>
 
-namespace demo {
+namespace demo
+{
 
 EchoNodeApp::EchoNodeApp(int argc, char ** argv)
-    : context_(argc, argv),
-      node_(std::make_shared<EchoNode>()),
-      executor_(binding::make_single_threaded_executor()) {
+: context_(argc, argv),
+  node_(std::make_shared<EchoNode>()),
+  executor_(binding::make_single_threaded_executor())
+{
   executor_->add_node(node_);
 }
 
-int EchoNodeApp::run() {
+int EchoNodeApp::run()
+{
   executor_->spin();
   return EXIT_SUCCESS;
 }

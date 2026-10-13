@@ -7,28 +7,31 @@
 #include <string_view>
 #include <vector>
 
-namespace planning {
+namespace planning
+{
 
 SpeedPlannerNodeDiagnostics::SpeedPlannerNodeDiagnostics(
-    rclcpp::Node & node, SpeedPlannerNodeEngine & engine)
-    : node_(node), engine_(engine) {
+  rclcpp::Node & node, SpeedPlannerNodeEngine & engine)
+: node_(node), engine_(engine)
+{
   group_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   pub_ = node_.create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
-      names::kDiagnosticsTopic, rclcpp::QoS(names::kDiagnosticsQosDepth));
+    names::kDiagnosticsTopic, rclcpp::QoS(names::kDiagnosticsQosDepth));
 
   timer_ = binding::create_timer(
-      node_, clock_, std::chrono::seconds(names::kDiagnosticsPeriodS), [this]() { drain(); },
-      group_);
+    node_, clock_, std::chrono::seconds(names::kDiagnosticsPeriodS), [this]() { drain(); }, group_);
 }
 
-void SpeedPlannerNodeDiagnostics::drain() {
+void SpeedPlannerNodeDiagnostics::drain()
+{
   using diagnostic_msgs::msg::DiagnosticStatus;
 
   diagnostic_msgs::msg::DiagnosticArray array;
 
   // The same fault repeated within one drain is logged once, with a count.
-  struct Occurrence {
+  struct Occurrence
+  {
     r2d::Code code;
     const char * who;
     std::size_t count;
@@ -37,8 +40,8 @@ void SpeedPlannerNodeDiagnostics::drain() {
 
   engine_.drain_diagnostics([&](r2d::Code code, const char * who) {
     DiagnosticStatus status;
-    status.level = code == r2d::Code::ERR_RUN_101 ? DiagnosticStatus::ERROR
-                                                  : DiagnosticStatus::WARN;
+    status.level =
+      code == r2d::Code::ERR_RUN_101 ? DiagnosticStatus::ERROR : DiagnosticStatus::WARN;
     status.name = node_.get_fully_qualified_name();
     status.message = r2d::code_message(code);
 
@@ -75,16 +78,17 @@ void SpeedPlannerNodeDiagnostics::drain() {
   }
 }
 
-void SpeedPlannerNodeDiagnostics::log(r2d::Code code, const char * who, std::size_t count) {
+void SpeedPlannerNodeDiagnostics::log(r2d::Code code, const char * who, std::size_t count)
+{
   const char * pipeline = who ? who : "";
   if (code == r2d::Code::ERR_RUN_101) {
     RCLCPP_ERROR(
-        node_.get_logger(), "%s: %s (pipeline '%s', %zu time(s))", r2d::code_name(code),
-        r2d::code_message(code), pipeline, count);
+      node_.get_logger(), "%s: %s (pipeline '%s', %zu time(s))", r2d::code_name(code),
+      r2d::code_message(code), pipeline, count);
   } else {
     RCLCPP_WARN(
-        node_.get_logger(), "%s: %s (pipeline '%s', %zu time(s))", r2d::code_name(code),
-        r2d::code_message(code), pipeline, count);
+      node_.get_logger(), "%s: %s (pipeline '%s', %zu time(s))", r2d::code_name(code),
+      r2d::code_message(code), pipeline, count);
   }
 }
 

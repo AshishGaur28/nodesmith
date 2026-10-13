@@ -154,21 +154,21 @@ The classes and their single responsibilities (the dependency points one way, fr
 
 Topics, services, QoS depths, timer periods, parameter names and pipeline names appear once, as constants in `interface_names.hpp`; the other files refer to them.
 
-==== Layout
+==== Code Style
 
-Generated files are meant to be read. No line is longer than 100 columns, there is no trailing whitespace, and related statements are separated by blank lines (declarations, checks and assignments inside a pipeline; the creation of each publisher, subscription, service and timer; each parameter's declaration). A long call is wrapped with its arguments on one continuation line, or one per line if they do not fit. The one exception is a formula that inlines into a single long expression, which is broken only at its outermost `?`, `:`, `&&` and `||`. The rules live in `layout.py` and are enforced for every example by `tests/integration/test_generated_style.py`.
+Generated C++ follows the ROS 2 C++ style (the `ament_clang_format` configuration, itself Google style with ROS's changes), and is formatted by the generator itself with a pinned `clang-format` (`format.py`; the version is fixed in `pyproject.toml`, so the same manifest gives the same bytes on every machine). The configuration is written into each package as `.clang-format`, so an editor or `ament_clang_format` reproduces the same layout. The rules a reader will notice:
 
-=== 4.6. ROS Release Binding
+* 100 columns at most, 2 spaces of indentation, no tabs, no trailing whitespace.
+* The opening brace of a function, class, struct, enum and namespace is on its own line; control statements keep it on the line (`if (x) {`). Statements in a block always have braces.
+* `const T & x` and `char ** argv`: the `&` and `*` have a space on both sides.
+* Constructor initializers start at the left margin with `:`.
+* A call that does not fit is broken after the opening parenthesis, with the arguments indented by two.
+* Declarations, checks and assignments of a pipeline are separated by blank lines, as is the creation of each publisher, subscription, service and timer; comments are written whole sentences, wrapped by the generator.
+* Names: constants `kCamelCase` in `<node>::names`; classes `CamelCase`; members and functions `snake_case` with a trailing `_` for private data members; one namespace per ROS namespace.
+* Fixed-width integers (`std::int32_t`, `std::int64_t`, `std::size_t`) for all data; plain `int` only where the language or rclcpp requires it (`main`, `argc`, the exit status).
+* No macros except the ROS logging and component-registration macros; `[[maybe_unused]]` rather than `(void)` casts; `EXIT_SUCCESS` and `EXIT_FAILURE` for exit codes.
 
-Everything in the generated code that has changed, or could change, between ROS 2 releases is called through the `binding` namespace of `include/<node_name>/ros_binding.hpp`: process start and stop (`init`, `shutdown`), executor creation, `create_subscription`, `create_service`, `create_timer` and the parameter callback (`add_parameter_callback`, `ParameterCallbackHandle`). The adapters, the node and the application call these and never the rclcpp function directly; `tests/integration/test_generated_style.py` fails if a generated file other than `ros_binding.hpp` does.
-
-The file is identical in every package and is the implementation for ROS 2 Jazzy, the only release verified so far. Supporting another release means changing that one file (a replacement, or a branch on `RCLCPP_VERSION_MAJOR` from `<rclcpp/version.h>`): the engine, the adapters, `main()` and the user's `logic/` stay as they are, and a package generated with this layout needs no regeneration. To add a release, build the example nodes on that release's image and change only what fails to compile or behave. The binding covers API signatures; it cannot hide a change in behaviour, such as a default QoS or middleware difference, which has to be found by running the examples.
-
-=== 4.7. ROS 2 Conventions
-
-* *Component.* The node is built into a shared library `<node_name>_component` and registered with `rclcpp_components` (`RCLCPP_COMPONENTS_REGISTER_NODE(<ns>::<Node>)`), so it can be loaded into a container (`ros2 component load /ComponentManager <node_name> <ns>::<Node>`) as well as run on its own by the `<node_name>` executable, which links the same library. The `jazzy` job checks both. The user's `logic/` files and the placeholders are part of the library.
-* *Log.* What goes to `/diagnostics` also goes to the ROS log (`/rosout`): the diagnostics adapter logs each distinct fault once per drain with a count (`ERROR` for `ERR_RUN_101`, `WARN` otherwise), a rejected parameter update is logged with its reason, and the node logs `started` once it is operational. No logging happens inside a pipeline execution (§4.2).
-* *Lint.* `package.xml` has `test_depend` on `ament_lint_auto` and `ament_lint_common`, and `CMakeLists.txt` runs them under `colcon test` when installed. The copyright and cpplint checks are skipped (they want a license header in every file and Google header guards). The generated layout is not yet known to satisfy `ament_uncrustify`, which expects ROS's brace style for function and class definitions: `tests/jazzy/run.sh --lint` runs the linters in the `jazzy` job and prints what they find, without failing it.
+Not reformatted: the user's own files in `logic/`, which are copied as written. A formula that inlines into one very long expression is broken only where `clang-format` can. `tests/integration/test_generated_style.py` enforces the column limit, whitespace and release-binding rules for every example, and `tests/integration/test_generated_format.py` checks that formatting a generated file again changes nothing.
 
 === 4.2. Memory & Real-Time Guarantees
 * **Pre-allocation:** All buffers, QoS profiles, subscriber/publisher handles, state objects and callback groups MUST be created during node initialization (constructor, or `on_configure` for lifecycle nodes, `SPEC-05`) and never inside a callback.

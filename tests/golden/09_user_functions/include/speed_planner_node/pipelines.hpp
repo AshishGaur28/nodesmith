@@ -10,22 +10,26 @@
 #include <string>
 #include <vector>
 
-#include "speed_planner_node/runtime.hpp"
 #include "speed_planner_node/logic_api.hpp"
+#include "speed_planner_node/runtime.hpp"
 
-namespace planning {
+namespace planning
+{
 
-struct Params {
+struct Params
+{
   double speed_limit{2.0};
 };
 
-struct State {
+struct State
+{
   double last_speed{0.0};
 };
 
 // One validation function for the initial values and for every update, so both obey the same
 // rules.
-inline std::optional<std::string> validate([[maybe_unused]] const Params & p) {
+inline std::optional<std::string> validate([[maybe_unused]] const Params & p)
+{
   if (!(p.speed_limit >= 0.0)) {
     return std::string("'speed_limit' out of range [0.0, inf]");
   }
@@ -35,7 +39,8 @@ inline std::optional<std::string> validate([[maybe_unused]] const Params & p) {
 
 // Pipeline `plan` (SPEC-02 §7 steps 1-4): evaluates and stages; the caller commits and
 // publishes.
-struct PlanResult {
+struct PlanResult
+{
   double next_last_speed{};
   std::string out__label_pub__data{};
   double out__speed_pub__data{};
@@ -43,12 +48,10 @@ struct PlanResult {
 
 template <class In>
 inline bool eval_plan(
-    [[maybe_unused]] const In & in,
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] const State & state,
-    [[maybe_unused]] double now_sec,
-    [[maybe_unused]] double dt_sec,
-    PlanResult & out) {
+  [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
+  [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
+  [[maybe_unused]] double dt_sec, PlanResult & out)
+{
   bool fault = false;
 
   const double v_speed = ::logic::plan_speed(in.data, params.speed_limit, state.last_speed, fault);

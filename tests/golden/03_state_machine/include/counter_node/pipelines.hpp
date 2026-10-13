@@ -12,20 +12,22 @@
 
 #include "counter_node/runtime.hpp"
 
-namespace demo {
+namespace demo
+{
 
-struct Params {
+struct Params
+{
   std::int64_t limit{std::int64_t{10}};
   std::int64_t step{std::int64_t{1}};
 };
 
-struct State {
+struct State
+{
   std::int64_t count{std::int64_t{0}};
 };
 
-inline bool constraint_0(
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] bool & fault) {
+inline bool constraint_0([[maybe_unused]] const Params & params, [[maybe_unused]] bool & fault)
+{
   const bool n2 = (params.step <= params.limit);
 
   return n2;
@@ -33,7 +35,8 @@ inline bool constraint_0(
 
 // One validation function for the initial values and for every update, so both obey the same
 // rules.
-inline std::optional<std::string> validate([[maybe_unused]] const Params & p) {
+inline std::optional<std::string> validate([[maybe_unused]] const Params & p)
+{
   if (!(p.step >= std::int64_t{1})) {
     return std::string("'step' out of range [1, inf]");
   }
@@ -54,7 +57,8 @@ inline std::optional<std::string> validate([[maybe_unused]] const Params & p) {
 
 // Pipeline `reset` (SPEC-02 §7 steps 1-4): evaluates and stages; the caller commits and
 // publishes.
-struct ResetResult {
+struct ResetResult
+{
   std::int64_t next_count{};
   std::string out__res__message{};
   bool out__res__success{};
@@ -62,12 +66,10 @@ struct ResetResult {
 
 template <class In>
 inline bool eval_reset(
-    [[maybe_unused]] const In & in,
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] const State & state,
-    [[maybe_unused]] double now_sec,
-    [[maybe_unused]] double dt_sec,
-    ResetResult & out) {
+  [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
+  [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
+  [[maybe_unused]] double dt_sec, ResetResult & out)
+{
   bool fault = false;
 
   const std::int64_t n0 = std::int64_t{0};
@@ -86,23 +88,22 @@ inline bool eval_reset(
 
 // Pipeline `tick` (SPEC-02 §7 steps 1-4): evaluates and stages; the caller commits and
 // publishes.
-struct TickResult {
+struct TickResult
+{
   std::int64_t next_count{};
   std::int64_t out__count_pub__data{};
 };
 
 inline bool eval_tick(
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] const State & state,
-    [[maybe_unused]] double now_sec,
-    [[maybe_unused]] double dt_sec,
-    TickResult & out) {
+  [[maybe_unused]] const Params & params, [[maybe_unused]] const State & state,
+  [[maybe_unused]] double now_sec, [[maybe_unused]] double dt_sec, TickResult & out)
+{
   bool fault = false;
 
   const std::int64_t v_next =
-      ((r2d::wrap_add<std::int64_t>(state.count, params.step) >= params.limit)
-          ? static_cast<std::int64_t>(std::int32_t{0})
-          : r2d::wrap_add<std::int64_t>(state.count, params.step));
+    ((r2d::wrap_add<std::int64_t>(state.count, params.step) >= params.limit)
+       ? static_cast<std::int64_t>(std::int32_t{0})
+       : r2d::wrap_add<std::int64_t>(state.count, params.step));
 
   if (fault) {
     return false;

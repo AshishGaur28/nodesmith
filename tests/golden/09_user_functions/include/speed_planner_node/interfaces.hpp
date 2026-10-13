@@ -5,9 +5,7 @@
 #pragma once
 
 #include <memory>
-
 #include <rclcpp/rclcpp.hpp>
-
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/string.hpp>
 
@@ -15,10 +13,12 @@
 #include "speed_planner_node/interface_names.hpp"
 #include "speed_planner_node/ros_binding.hpp"
 
-namespace planning {
+namespace planning
+{
 
-class SpeedPlannerNodeInterfaces {
- public:
+class SpeedPlannerNodeInterfaces
+{
+public:
   SpeedPlannerNodeInterfaces(rclcpp::Node & node, SpeedPlannerNodeEngine & engine);
   SpeedPlannerNodeInterfaces(const SpeedPlannerNodeInterfaces &) = delete;
   SpeedPlannerNodeInterfaces & operator=(const SpeedPlannerNodeInterfaces &) = delete;
@@ -27,7 +27,7 @@ class SpeedPlannerNodeInterfaces {
   // (SPEC-02 section 7).
   void start();
 
- private:
+private:
   void run_plan(const std_msgs::msg::Float64 & in);
 
   rclcpp::Node & node_;

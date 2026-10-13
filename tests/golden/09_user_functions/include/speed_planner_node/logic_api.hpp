@@ -14,7 +14,8 @@
 #include <string>
 #include <vector>
 
-namespace logic {
+namespace logic
+{
 
 void setup();
 

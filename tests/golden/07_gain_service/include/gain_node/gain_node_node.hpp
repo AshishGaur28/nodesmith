@@ -12,13 +12,15 @@
 #include "gain_node/interfaces.hpp"
 #include "gain_node/parameters.hpp"
 
-namespace processing {
+namespace processing
+{
 
-class GainNode : public rclcpp::Node {
- public:
+class GainNode : public rclcpp::Node
+{
+public:
   explicit GainNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
 
- private:
+private:
   GainNodeEngine engine_;
   GainNodeParameters parameters_;
   GainNodeInterfaces interfaces_;

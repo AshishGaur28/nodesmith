@@ -5,16 +5,17 @@
 #pragma once
 
 #include <memory>
-
 #include <rclcpp/rclcpp.hpp>
 
 #include "counter_node/counter_node_node.hpp"
 #include "counter_node/ros_binding.hpp"
 
-namespace demo {
+namespace demo
+{
 
-class CounterNodeApp {
- public:
+class CounterNodeApp
+{
+public:
   CounterNodeApp(int argc, char ** argv);
   CounterNodeApp(const CounterNodeApp &) = delete;
   CounterNodeApp & operator=(const CounterNodeApp &) = delete;
@@ -22,9 +23,10 @@ class CounterNodeApp {
   // Spins until the context is shut down (for example by Ctrl-C). Returns the exit status.
   int run();
 
- private:
+private:
   // Initialises ROS first and shuts it down last, after the node and the executor are gone.
-  struct RosContext {
+  struct RosContext
+  {
     RosContext(int argc, char ** argv) { binding::init(argc, argv); }
     ~RosContext() { binding::shutdown(); }
     RosContext(const RosContext &) = delete;

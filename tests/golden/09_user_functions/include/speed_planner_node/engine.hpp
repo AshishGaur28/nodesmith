@@ -13,10 +13,12 @@
 #include "speed_planner_node/pipelines.hpp"
 #include "speed_planner_node/runtime.hpp"
 
-namespace planning {
+namespace planning
+{
 
-class SpeedPlannerNodeEngine {
- public:
+class SpeedPlannerNodeEngine
+{
+public:
   SpeedPlannerNodeEngine() : params_(Params{}) {}
   SpeedPlannerNodeEngine(const SpeedPlannerNodeEngine &) = delete;
   SpeedPlannerNodeEngine & operator=(const SpeedPlannerNodeEngine &) = delete;
@@ -25,7 +27,8 @@ class SpeedPlannerNodeEngine {
   // Both validate. A rejected value is returned as the reason and nothing changes
   // (SPEC-07 section 3.1).
 
-  std::optional<std::string> start(const Params & initial) {
+  std::optional<std::string> start(const Params & initial)
+  {
     if (auto why = validate(initial)) {
       return why;
     }
@@ -35,7 +38,8 @@ class SpeedPlannerNodeEngine {
 
   Params parameters() { return *params_.acquire(); }
 
-  std::optional<std::string> update(const Params & next) {
+  std::optional<std::string> update(const Params & next)
+  {
     if (auto why = validate(next)) {
       return why;
     }
@@ -60,7 +64,8 @@ class SpeedPlannerNodeEngine {
   void report(r2d::Code code, const char * who) noexcept { diag_.report(code, who); }
 
   template <class Emit>
-  void drain_diagnostics(Emit && emit) {
+  void drain_diagnostics(Emit && emit)
+  {
     diag_.drain(emit);
   }
 
@@ -69,7 +74,8 @@ class SpeedPlannerNodeEngine {
   // fault stopped it: the fault is reported as ERR_RUN_101 and nothing is committed.
 
   template <class In>
-  std::optional<PlanResult> run_plan(const r2d::RunGate::Scope &, const In & in) {
+  std::optional<PlanResult> run_plan(const r2d::RunGate::Scope &, const In & in)
+  {
     // One snapshot for the whole execution (SPEC-12 section 5).
     const auto params = params_.acquire();
 
@@ -86,7 +92,7 @@ class SpeedPlannerNodeEngine {
     return r;
   }
 
- private:
+private:
   // One slot per thread (1), the current one and a free one (SPEC-12 section 5).
   r2d::SnapshotRing<Params, 3> params_;
 

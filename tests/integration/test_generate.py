@@ -8,6 +8,7 @@ import pytest
 from nodesmith.api import compile_manifest
 from nodesmith.cli.main import main
 from nodesmith.generators.cpp import generate_package, runtime_header
+from nodesmith.generators.cpp.format import format_cpp
 
 ROOT = Path(__file__).resolve().parents[2]
 GOLDEN = ROOT / "tests" / "golden"
@@ -26,11 +27,11 @@ def test_generated_package_equals_the_golden_one(name):
 
 
 def test_every_generated_package_carries_the_same_runtime_header():
-    assert (
-        runtime_header()
-        == (ROOT / "templates/cpp_rclcpp/concurrency_primitives.hpp").read_text()
+    assert runtime_header() == format_cpp(
+        (ROOT / "templates/cpp_rclcpp/concurrency_primitives.hpp").read_text()
         + "\n"
-        + (ROOT / "templates/cpp_rclcpp/runtime_helpers.hpp").read_text()
+        + (ROOT / "templates/cpp_rclcpp/runtime_helpers.hpp").read_text(),
+        "runtime.hpp",
     )
 
 

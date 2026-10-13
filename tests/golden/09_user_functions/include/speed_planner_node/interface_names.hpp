@@ -8,7 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace planning::names {
+namespace planning::names
+{
 
 // The node
 inline constexpr char kNodeName[] = "speed_planner_node";

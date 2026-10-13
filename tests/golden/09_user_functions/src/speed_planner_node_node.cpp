@@ -4,13 +4,15 @@
 
 #include <rclcpp_components/register_node_macro.hpp>
 
-namespace planning {
+namespace planning
+{
 
 SpeedPlannerNode::SpeedPlannerNode(const rclcpp::NodeOptions & options)
-    : Node(names::kNodeName, names::kNodeNamespace, options),
-      parameters_(*this, engine_),
-      interfaces_(*this, engine_),
-      diagnostics_(*this, engine_) {
+: Node(names::kNodeName, names::kNodeNamespace, options),
+  parameters_(*this, engine_),
+  interfaces_(*this, engine_),
+  diagnostics_(*this, engine_)
+{
   // The user's start-up hook: after a valid start-up, before any pipeline can run.
   logic::setup();
 
@@ -23,7 +25,8 @@ SpeedPlannerNode::SpeedPlannerNode(const rclcpp::NodeOptions & options)
   RCLCPP_INFO(get_logger(), "started");
 }
 
-SpeedPlannerNode::~SpeedPlannerNode() {
+SpeedPlannerNode::~SpeedPlannerNode()
+{
   logic::teardown();  // the user's stop hook
 }
 

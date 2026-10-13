@@ -12,13 +12,15 @@
 #include "imu_filter_node/interfaces.hpp"
 #include "imu_filter_node/parameters.hpp"
 
-namespace sensors::chassis {
+namespace sensors::chassis
+{
 
-class ImuFilterNode : public rclcpp::Node {
- public:
+class ImuFilterNode : public rclcpp::Node
+{
+public:
   explicit ImuFilterNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
 
- private:
+private:
   ImuFilterNodeEngine engine_;
   ImuFilterNodeParameters parameters_;
   ImuFilterNodeInterfaces interfaces_;

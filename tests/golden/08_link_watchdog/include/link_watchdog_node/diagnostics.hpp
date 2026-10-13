@@ -4,26 +4,27 @@
 // (SPEC-12 section 7).
 #pragma once
 
-#include <memory>
-
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/key_value.hpp>
+#include <memory>
 #include <rclcpp/rclcpp.hpp>
 
 #include "link_watchdog_node/engine.hpp"
 #include "link_watchdog_node/interface_names.hpp"
 #include "link_watchdog_node/ros_binding.hpp"
 
-namespace monitoring {
+namespace monitoring
+{
 
-class LinkWatchdogNodeDiagnostics {
- public:
+class LinkWatchdogNodeDiagnostics
+{
+public:
   LinkWatchdogNodeDiagnostics(rclcpp::Node & node, LinkWatchdogNodeEngine & engine);
   LinkWatchdogNodeDiagnostics(const LinkWatchdogNodeDiagnostics &) = delete;
   LinkWatchdogNodeDiagnostics & operator=(const LinkWatchdogNodeDiagnostics &) = delete;
 
- private:
+private:
   void drain();
   void log(r2d::Code code, const char * who, std::size_t count);
 

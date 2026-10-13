@@ -5,16 +5,17 @@
 #pragma once
 
 #include <memory>
-
 #include <rclcpp/rclcpp.hpp>
 
 #include "link_watchdog_node/link_watchdog_node_node.hpp"
 #include "link_watchdog_node/ros_binding.hpp"
 
-namespace monitoring {
+namespace monitoring
+{
 
-class LinkWatchdogNodeApp {
- public:
+class LinkWatchdogNodeApp
+{
+public:
   LinkWatchdogNodeApp(int argc, char ** argv);
   LinkWatchdogNodeApp(const LinkWatchdogNodeApp &) = delete;
   LinkWatchdogNodeApp & operator=(const LinkWatchdogNodeApp &) = delete;
@@ -22,9 +23,10 @@ class LinkWatchdogNodeApp {
   // Spins until the context is shut down (for example by Ctrl-C). Returns the exit status.
   int run();
 
- private:
+private:
   // Initialises ROS first and shuts it down last, after the node and the executor are gone.
-  struct RosContext {
+  struct RosContext
+  {
     RosContext(int argc, char ** argv) { binding::init(argc, argv); }
     ~RosContext() { binding::shutdown(); }
     RosContext(const RosContext &) = delete;

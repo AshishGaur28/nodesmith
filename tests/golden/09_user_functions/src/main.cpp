@@ -8,7 +8,8 @@
 
 // A failure while starting or running (for example an invalid parameter value) ends the process
 // with a message and a failure status, not with an abort.
-int main(int argc, char ** argv) {
+int main(int argc, char ** argv)
+{
   try {
     return planning::SpeedPlannerNodeApp(argc, argv).run();
   } catch (const std::exception & error) {

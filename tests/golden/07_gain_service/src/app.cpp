@@ -4,16 +4,19 @@
 
 #include <cstdlib>
 
-namespace processing {
+namespace processing
+{
 
 GainNodeApp::GainNodeApp(int argc, char ** argv)
-    : context_(argc, argv),
-      node_(std::make_shared<GainNode>()),
-      executor_(binding::make_single_threaded_executor()) {
+: context_(argc, argv),
+  node_(std::make_shared<GainNode>()),
+  executor_(binding::make_single_threaded_executor())
+{
   executor_->add_node(node_);
 }
 
-int GainNodeApp::run() {
+int GainNodeApp::run()
+{
   executor_->spin();
   return EXIT_SUCCESS;
 }

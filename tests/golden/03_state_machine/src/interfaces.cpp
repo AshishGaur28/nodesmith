@@ -2,40 +2,39 @@
 // IR hash: cf473c6f24952073b0ad5f7ea6769da29b35ab9137f76e035719b2da74a0dfe8
 #include "counter_node/interfaces.hpp"
 
-namespace demo {
+namespace demo
+{
 
 // Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
 // picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
 CounterNodeInterfaces::CounterNodeInterfaces(rclcpp::Node & node, CounterNodeEngine & engine)
-    : node_(node), engine_(engine) {
+: node_(node), engine_(engine)
+{
   group_state_domain_1_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   pub_count_pub_ = node_.create_publisher<std_msgs::msg::Int64>(
-      names::kPubTopicCountPub,
-      rclcpp::QoS(names::kPubQosDepthCountPub).reliable().durability_volatile());
+    names::kPubTopicCountPub,
+    rclcpp::QoS(names::kPubQosDepthCountPub).reliable().durability_volatile());
 
   srv_reset_srv_ = binding::create_service<std_srvs::srv::Trigger>(
-      node_,
-      names::kServiceNameResetSrv,
-      [this](
-          const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-          std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-        run_reset(*request, *response);
-      },
-      group_state_domain_1_);
+    node_, names::kServiceNameResetSrv,
+    [this](
+      const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+      run_reset(*request, *response);
+    },
+    group_state_domain_1_);
 
   timer_tick_ = binding::create_timer(
-      node_,
-      node_.get_clock(),
-      std::chrono::milliseconds(names::kPeriodMsTick),
-      [this]() { run_tick(); },
-      group_state_domain_1_);
+    node_, node_.get_clock(), std::chrono::milliseconds(names::kPeriodMsTick),
+    [this]() { run_tick(); }, group_state_domain_1_);
 }
 
 void CounterNodeInterfaces::start() {}
 
 void CounterNodeInterfaces::run_reset(
-    const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res) {
+  const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res)
+{
   const auto run = engine_.enter();
   if (!run) {
     res = std_srvs::srv::Trigger::Response();
@@ -56,7 +55,8 @@ void CounterNodeInterfaces::run_reset(
   res.success = r.out__res__success;
 }
 
-void CounterNodeInterfaces::run_tick() {
+void CounterNodeInterfaces::run_tick()
+{
   // A firing while the previous execution still runs is skipped (ERR_RUN_102).
   r2d::BusyGuard busy(busy_tick_);
   if (!busy) {

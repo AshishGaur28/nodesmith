@@ -28,7 +28,7 @@ def environment() -> Environment:
 def binding_header() -> str:
     """Text of ``ros_binding.hpp``: the only file that calls the release-sensitive parts of
     rclcpp. It is identical in every generated package."""
-    return (TEMPLATES / "ros_binding.hpp").read_text()
+    return _formatted((TEMPLATES / "ros_binding.hpp").read_text(), "ros_binding.hpp")
 
 
 def runtime_header() -> str:
@@ -36,4 +36,10 @@ def runtime_header() -> str:
     diagnostics ring. It is identical in every generated package."""
     primitives = (TEMPLATES / "concurrency_primitives.hpp").read_text()
     helpers = (TEMPLATES / "runtime_helpers.hpp").read_text()
-    return primitives + "\n" + helpers
+    return _formatted(primitives + "\n" + helpers, "runtime.hpp")
+
+
+def _formatted(text: str, filename: str) -> str:
+    from .format import format_cpp  # format.py imports this module for TEMPLATES
+
+    return format_cpp(text, filename)

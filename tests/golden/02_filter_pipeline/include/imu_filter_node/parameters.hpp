@@ -5,26 +5,27 @@
 // (SPEC-07 section 3.1).
 #pragma once
 
-#include <vector>
-
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <vector>
 
 #include "imu_filter_node/engine.hpp"
 #include "imu_filter_node/interface_names.hpp"
 #include "imu_filter_node/ros_binding.hpp"
 
-namespace sensors::chassis {
+namespace sensors::chassis
+{
 
-class ImuFilterNodeParameters {
- public:
+class ImuFilterNodeParameters
+{
+public:
   // Throws rclcpp::exceptions::InvalidParameterValueException when a starting value is invalid:
   // the node then refuses to start.
   ImuFilterNodeParameters(rclcpp::Node & node, ImuFilterNodeEngine & engine);
   ImuFilterNodeParameters(const ImuFilterNodeParameters &) = delete;
   ImuFilterNodeParameters & operator=(const ImuFilterNodeParameters &) = delete;
 
- private:
+private:
   rcl_interfaces::msg::SetParametersResult on_set(const std::vector<rclcpp::Parameter> & updates);
 
   ImuFilterNodeEngine & engine_;

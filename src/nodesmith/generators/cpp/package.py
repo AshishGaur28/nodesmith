@@ -16,6 +16,7 @@ from . import names
 from .dag import DagEmitter, PipelineInfo
 from .engine import engine_members, engine_methods
 from .errors import Unsupported
+from .format import config_text, format_cpp
 from .interfaces import InterfacesBuilder
 from .layout import constructor, signature
 from .literals import value_literal
@@ -308,7 +309,18 @@ def generate_package(
                 rmw_package=RMW_PACKAGES[rmw],
             )
         )
+    files = {
+        path: format_cpp(text, path) if path.endswith((".hpp", ".cpp")) and _ours(path) else text
+        for path, text in files.items()
+    }
+    files[".clang-format"] = config_text()
     return dict(sorted(files.items()))
+
+
+def _ours(path: str) -> bool:
+    """True for files the generator wrote, false for the user's own files copied into ``logic/``
+    (the user's code is not reformatted)."""
+    return not path.startswith("logic/")
 
 
 def write_package(files: dict[str, str], out_dir: str | Path) -> None:

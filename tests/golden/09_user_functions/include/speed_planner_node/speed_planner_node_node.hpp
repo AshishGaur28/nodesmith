@@ -12,14 +12,16 @@
 #include "speed_planner_node/interfaces.hpp"
 #include "speed_planner_node/parameters.hpp"
 
-namespace planning {
+namespace planning
+{
 
-class SpeedPlannerNode : public rclcpp::Node {
- public:
+class SpeedPlannerNode : public rclcpp::Node
+{
+public:
   explicit SpeedPlannerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
   ~SpeedPlannerNode() override;  // runs the user's logic::teardown()
 
- private:
+private:
   SpeedPlannerNodeEngine engine_;
   SpeedPlannerNodeParameters parameters_;
   SpeedPlannerNodeInterfaces interfaces_;

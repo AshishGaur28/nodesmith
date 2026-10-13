@@ -6,16 +6,18 @@
 #include <string>
 #include <utility>
 
-namespace demo {
+namespace demo
+{
 
 CounterNodeParameters::CounterNodeParameters(rclcpp::Node & node, CounterNodeEngine & engine)
-    : engine_(engine), logger_(node.get_logger()) {
+: engine_(engine), logger_(node.get_logger())
+{
   // The effective values include launch-file and command-line overrides.
   Params initial;
 
   rcl_interfaces::msg::ParameterDescriptor d_limit;
   initial.limit = node.declare_parameter<std::int64_t>(
-      names::kParamLimit, static_cast<std::int64_t>(std::int64_t{10}), d_limit);
+    names::kParamLimit, static_cast<std::int64_t>(std::int64_t{10}), d_limit);
 
   rcl_interfaces::msg::ParameterDescriptor d_step;
   d_step.integer_range.resize(1);
@@ -23,21 +25,22 @@ CounterNodeParameters::CounterNodeParameters(rclcpp::Node & node, CounterNodeEng
   d_step.integer_range[0].to_value = std::numeric_limits<std::int64_t>::max();
   d_step.integer_range[0].step = 0;
   initial.step = node.declare_parameter<std::int64_t>(
-      names::kParamStep, static_cast<std::int64_t>(std::int64_t{1}), d_step);
+    names::kParamStep, static_cast<std::int64_t>(std::int64_t{1}), d_step);
 
   if (auto why = engine_.start(initial)) {
     throw rclcpp::exceptions::InvalidParameterValueException(*why);  // refuse to start
   }
 
   handle_ = binding::add_parameter_callback(
-      node, [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
+    node, [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
 }
 
 // Runs on the parameter-service thread, concurrently with the pipelines. It never touches state
 // and never blocks a pipeline: the engine builds a whole new snapshot and swaps it in
 // (SPEC-07 section 3.1, SPEC-12 section 5).
 rcl_interfaces::msg::SetParametersResult CounterNodeParameters::on_set(
-    const std::vector<rclcpp::Parameter> & updates) {
+  const std::vector<rclcpp::Parameter> & updates)
+{
   auto reject = [this](std::string why) {
     RCLCPP_WARN(logger_, "parameter update rejected: %s", why.c_str());
     engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);

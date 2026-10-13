@@ -7,9 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
-
 #include <rclcpp/rclcpp.hpp>
-
 #include <std_msgs/msg/int64.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
@@ -17,10 +15,12 @@
 #include "counter_node/interface_names.hpp"
 #include "counter_node/ros_binding.hpp"
 
-namespace demo {
+namespace demo
+{
 
-class CounterNodeInterfaces {
- public:
+class CounterNodeInterfaces
+{
+public:
   CounterNodeInterfaces(rclcpp::Node & node, CounterNodeEngine & engine);
   CounterNodeInterfaces(const CounterNodeInterfaces &) = delete;
   CounterNodeInterfaces & operator=(const CounterNodeInterfaces &) = delete;
@@ -29,9 +29,9 @@ class CounterNodeInterfaces {
   // (SPEC-02 section 7).
   void start();
 
- private:
+private:
   void run_reset(
-      const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res);
+    const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res);
   void run_tick();
 
   rclcpp::Node & node_;

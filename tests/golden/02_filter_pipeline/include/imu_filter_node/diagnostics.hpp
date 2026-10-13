@@ -4,26 +4,27 @@
 // (SPEC-12 section 7).
 #pragma once
 
-#include <memory>
-
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/key_value.hpp>
+#include <memory>
 #include <rclcpp/rclcpp.hpp>
 
 #include "imu_filter_node/engine.hpp"
 #include "imu_filter_node/interface_names.hpp"
 #include "imu_filter_node/ros_binding.hpp"
 
-namespace sensors::chassis {
+namespace sensors::chassis
+{
 
-class ImuFilterNodeDiagnostics {
- public:
+class ImuFilterNodeDiagnostics
+{
+public:
   ImuFilterNodeDiagnostics(rclcpp::Node & node, ImuFilterNodeEngine & engine);
   ImuFilterNodeDiagnostics(const ImuFilterNodeDiagnostics &) = delete;
   ImuFilterNodeDiagnostics & operator=(const ImuFilterNodeDiagnostics &) = delete;
 
- private:
+private:
   void drain();
   void log(r2d::Code code, const char * who, std::size_t count);
 

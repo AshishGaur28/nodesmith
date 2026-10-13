@@ -5,26 +5,27 @@
 // (SPEC-07 section 3.1).
 #pragma once
 
-#include <vector>
-
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <vector>
 
 #include "counter_node/engine.hpp"
 #include "counter_node/interface_names.hpp"
 #include "counter_node/ros_binding.hpp"
 
-namespace demo {
+namespace demo
+{
 
-class CounterNodeParameters {
- public:
+class CounterNodeParameters
+{
+public:
   // Throws rclcpp::exceptions::InvalidParameterValueException when a starting value is invalid:
   // the node then refuses to start.
   CounterNodeParameters(rclcpp::Node & node, CounterNodeEngine & engine);
   CounterNodeParameters(const CounterNodeParameters &) = delete;
   CounterNodeParameters & operator=(const CounterNodeParameters &) = delete;
 
- private:
+private:
   rcl_interfaces::msg::SetParametersResult on_set(const std::vector<rclcpp::Parameter> & updates);
 
   CounterNodeEngine & engine_;

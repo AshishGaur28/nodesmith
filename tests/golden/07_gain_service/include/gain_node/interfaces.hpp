@@ -5,11 +5,9 @@
 #pragma once
 
 #include <memory>
-
-#include <rclcpp/rclcpp.hpp>
-
 #include <my_interfaces/srv/get_gain.hpp>
 #include <my_interfaces/srv/set_gain.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
@@ -17,10 +15,12 @@
 #include "gain_node/interface_names.hpp"
 #include "gain_node/ros_binding.hpp"
 
-namespace processing {
+namespace processing
+{
 
-class GainNodeInterfaces {
- public:
+class GainNodeInterfaces
+{
+public:
   GainNodeInterfaces(rclcpp::Node & node, GainNodeEngine & engine);
   GainNodeInterfaces(const GainNodeInterfaces &) = delete;
   GainNodeInterfaces & operator=(const GainNodeInterfaces &) = delete;
@@ -29,14 +29,14 @@ class GainNodeInterfaces {
   // (SPEC-02 section 7).
   void start();
 
- private:
+private:
   void run_apply_gain(const std_msgs::msg::Float64 & in);
   void run_handle_get(
-      const my_interfaces::srv::GetGain::Request & in, my_interfaces::srv::GetGain::Response & res);
+    const my_interfaces::srv::GetGain::Request & in, my_interfaces::srv::GetGain::Response & res);
   void run_handle_reset(
-      const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res);
+    const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res);
   void run_handle_set(
-      const my_interfaces::srv::SetGain::Request & in, my_interfaces::srv::SetGain::Response & res);
+    const my_interfaces::srv::SetGain::Request & in, my_interfaces::srv::SetGain::Response & res);
 
   rclcpp::Node & node_;
   GainNodeEngine & engine_;

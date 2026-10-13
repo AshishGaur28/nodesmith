@@ -4,13 +4,15 @@
 
 #include <rclcpp_components/register_node_macro.hpp>
 
-namespace monitoring {
+namespace monitoring
+{
 
 LinkWatchdogNode::LinkWatchdogNode(const rclcpp::NodeOptions & options)
-    : Node(names::kNodeName, names::kNodeNamespace, options),
-      parameters_(*this, engine_),
-      interfaces_(*this, engine_),
-      diagnostics_(*this, engine_) {
+: Node(names::kNodeName, names::kNodeNamespace, options),
+  parameters_(*this, engine_),
+  interfaces_(*this, engine_),
+  diagnostics_(*this, engine_)
+{
   // A non-lifecycle node is active once constructed (SPEC-12 section 6).
   engine_.open();
 

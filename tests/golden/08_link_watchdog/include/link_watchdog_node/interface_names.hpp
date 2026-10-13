@@ -8,7 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace monitoring::names {
+namespace monitoring::names
+{
 
 // The node
 inline constexpr char kNodeName[] = "link_watchdog_node";

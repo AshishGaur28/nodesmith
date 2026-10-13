@@ -5,16 +5,17 @@
 #pragma once
 
 #include <memory>
-
 #include <rclcpp/rclcpp.hpp>
 
 #include "gain_node/gain_node_node.hpp"
 #include "gain_node/ros_binding.hpp"
 
-namespace processing {
+namespace processing
+{
 
-class GainNodeApp {
- public:
+class GainNodeApp
+{
+public:
   GainNodeApp(int argc, char ** argv);
   GainNodeApp(const GainNodeApp &) = delete;
   GainNodeApp & operator=(const GainNodeApp &) = delete;
@@ -22,9 +23,10 @@ class GainNodeApp {
   // Spins until the context is shut down (for example by Ctrl-C). Returns the exit status.
   int run();
 
- private:
+private:
   // Initialises ROS first and shuts it down last, after the node and the executor are gone.
-  struct RosContext {
+  struct RosContext
+  {
     RosContext(int argc, char ** argv) { binding::init(argc, argv); }
     ~RosContext() { binding::shutdown(); }
     RosContext(const RosContext &) = delete;

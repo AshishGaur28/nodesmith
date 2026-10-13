@@ -4,16 +4,19 @@
 
 #include <cstdlib>
 
-namespace monitoring {
+namespace monitoring
+{
 
 LinkWatchdogNodeApp::LinkWatchdogNodeApp(int argc, char ** argv)
-    : context_(argc, argv),
-      node_(std::make_shared<LinkWatchdogNode>()),
-      executor_(binding::make_single_threaded_executor()) {
+: context_(argc, argv),
+  node_(std::make_shared<LinkWatchdogNode>()),
+  executor_(binding::make_single_threaded_executor())
+{
   executor_->add_node(node_);
 }
 
-int LinkWatchdogNodeApp::run() {
+int LinkWatchdogNodeApp::run()
+{
   executor_->spin();
   return EXIT_SUCCESS;
 }

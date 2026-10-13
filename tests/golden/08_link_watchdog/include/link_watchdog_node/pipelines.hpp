@@ -12,19 +12,23 @@
 
 #include "link_watchdog_node/runtime.hpp"
 
-namespace monitoring {
+namespace monitoring
+{
 
-struct Params {
+struct Params
+{
   double timeout_s{2.0};
 };
 
-struct State {
+struct State
+{
   double last_seen{0.0};
 };
 
 // One validation function for the initial values and for every update, so both obey the same
 // rules.
-inline std::optional<std::string> validate([[maybe_unused]] const Params & p) {
+inline std::optional<std::string> validate([[maybe_unused]] const Params & p)
+{
   if (!(p.timeout_s >= 0.1)) {
     return std::string("'timeout_s' out of range [0.1, inf]");
   }
@@ -34,16 +38,15 @@ inline std::optional<std::string> validate([[maybe_unused]] const Params & p) {
 
 // Pipeline `boot` (SPEC-02 §7 steps 1-4): evaluates and stages; the caller commits and
 // publishes.
-struct BootResult {
+struct BootResult
+{
   double next_last_seen{};
 };
 
 inline bool eval_boot(
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] const State & state,
-    [[maybe_unused]] double now_sec,
-    [[maybe_unused]] double dt_sec,
-    BootResult & out) {
+  [[maybe_unused]] const Params & params, [[maybe_unused]] const State & state,
+  [[maybe_unused]] double now_sec, [[maybe_unused]] double dt_sec, BootResult & out)
+{
   bool fault = false;
 
   const double n0 = now_sec;
@@ -59,17 +62,16 @@ inline bool eval_boot(
 
 // Pipeline `check_link` (SPEC-02 §7 steps 1-4): evaluates and stages; the caller commits and
 // publishes.
-struct CheckLinkResult {
+struct CheckLinkResult
+{
   double out__age_pub__data{};
   bool out__alive_pub__data{};
 };
 
 inline bool eval_check_link(
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] const State & state,
-    [[maybe_unused]] double now_sec,
-    [[maybe_unused]] double dt_sec,
-    CheckLinkResult & out) {
+  [[maybe_unused]] const Params & params, [[maybe_unused]] const State & state,
+  [[maybe_unused]] double now_sec, [[maybe_unused]] double dt_sec, CheckLinkResult & out)
+{
   bool fault = false;
 
   const double v_age = (now_sec - state.last_seen);
@@ -87,18 +89,17 @@ inline bool eval_check_link(
 
 // Pipeline `on_heartbeat` (SPEC-02 §7 steps 1-4): evaluates and stages; the caller commits and
 // publishes.
-struct OnHeartbeatResult {
+struct OnHeartbeatResult
+{
   double next_last_seen{};
 };
 
 template <class In>
 inline bool eval_on_heartbeat(
-    [[maybe_unused]] const In & in,
-    [[maybe_unused]] const Params & params,
-    [[maybe_unused]] const State & state,
-    [[maybe_unused]] double now_sec,
-    [[maybe_unused]] double dt_sec,
-    OnHeartbeatResult & out) {
+  [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
+  [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
+  [[maybe_unused]] double dt_sec, OnHeartbeatResult & out)
+{
   bool fault = false;
 
   const double n0 = now_sec;
