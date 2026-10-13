@@ -87,11 +87,30 @@ set +u
 # shellcheck disable=SC1091
 . ws/install/setup.sh
 set -u
-status=0
-python3 tests/jazzy/e2e.py "${SELECTED[@]%%:*}" || status=$?
+E2E_LOG="$(mktemp)"
+set +e
+python3 tests/jazzy/e2e.py "${SELECTED[@]%%:*}" 2>&1 | tee "$E2E_LOG"
+status="${PIPESTATUS[0]}"
+set -e
 
 if [ "$LINT" = 1 ]; then
   echo "== lint (informational: it does not change the result)"
   (cd ws && colcon test --event-handlers console_direct+ && colcon test-result --verbose) || true
+fi
+
+# A short recap, so the result and the lint findings can be read (or pasted) in one place.
+echo "== summary"
+grep -E '^(PASS|FAIL|SKIP|LAUNCH|COMPONENT)' "$E2E_LOG" || echo "(no e2e result lines)"
+echo "e2e exit status: $status"
+if [ "$LINT" = 1 ]; then
+  echo "-- lint failures by linter"
+  find ws/build -name '*.xunit.xml' -print0 | xargs -0 grep -lE '<failure' 2>/dev/null \
+    | sed -E 's|.*/([a-z_0-9]+)\.xunit\.xml|\1|' | sort | uniq -c || true
+  for linter in $(find ws/build -name '*.xunit.xml' -print0 | xargs -0 grep -lE '<failure' 2>/dev/null \
+      | sed -E 's|.*/([a-z_0-9]+)\.xunit\.xml|\1|' | sort -u); do
+    sample="$(find ws/build -name "$linter.xunit.xml" -print0 | xargs -0 grep -lE '<failure' | sort | head -1)"
+    echo "-- first $linter finding: $sample"
+    grep -vE '^\s*$' "$sample" | head -50
+  done
 fi
 exit "$status"
