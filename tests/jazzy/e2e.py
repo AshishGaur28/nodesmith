@@ -4,6 +4,7 @@
 It mirrors tests/cpp/drivers/*.cpp, which run the same scenarios against the rclcpp stand-in. Usage: e2e.py <example> ...
 """
 
+import os
 import signal
 import subprocess
 import sys
@@ -67,20 +68,41 @@ class Harness(Node):
         ).results[0]
 
 
+def spawn(command):
+    """Starts a ROS command in a process group of its own, so that `stop` can end it and the
+    processes `ros2 run` and `ros2 launch` start for it."""
+    return subprocess.Popen(command, start_new_session=True)
+
+
+def stop(process, grace=10.0):
+    """Ends a process started with `spawn` and everything it started. It asks politely (SIGINT),
+    then forces (SIGKILL), and never raises: a process that outlives its check would give the
+    next check a second node with the same name."""
+    for sig, wait in ((signal.SIGINT, grace), (signal.SIGKILL, 5.0)):
+        try:
+            os.killpg(process.pid, sig)
+        except ProcessLookupError:
+            return
+        try:
+            process.wait(timeout=wait)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
 def start(package):
-    return subprocess.Popen(["ros2", "run", package, package])
+    return spawn(["ros2", "run", package, package])
 
 
 def launch_check(package):
     """The installed launch file starts the node with its parameter file and the node stays up. A bad parameter
     file (wrong type, bad syntax) makes the node refuse to start, so this fails then."""
-    proc = subprocess.Popen(["ros2", "launch", package, f"{package}.launch.py"])
+    proc = spawn(["ros2", "launch", package, f"{package}.launch.py"])
     try:
         time.sleep(4.0)
         assert proc.poll() is None, "ros2 launch stopped within 4 s"
     finally:
-        proc.send_signal(signal.SIGINT)
-        proc.wait(timeout=20)
+        stop(proc)
 
 
 def component_check(package):
@@ -90,7 +112,7 @@ def component_check(package):
     ).stdout.splitlines()
     assert package in types, f"{package} is not a registered component package"
     plugin = types[types.index(package) + 1].strip()
-    container = subprocess.Popen(["ros2", "run", "rclcpp_components", "component_container"])
+    container = spawn(["ros2", "run", "rclcpp_components", "component_container"])
     try:
         time.sleep(3.0)
         load = subprocess.run(
@@ -101,8 +123,7 @@ def component_check(package):
         )
         assert load.returncode == 0, load.stdout + load.stderr
     finally:
-        container.send_signal(signal.SIGINT)
-        container.wait(timeout=20)
+        stop(container)
 
 
 def scenario_02(h):
@@ -261,8 +282,7 @@ def main(examples):
             print(f"FAIL {example}: {e!r}")
         finally:
             h.destroy_node()
-            proc.terminate()
-            proc.wait(timeout=10)
+            stop(proc)
     rclpy.shutdown()
     return failures
 
