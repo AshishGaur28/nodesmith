@@ -15,14 +15,14 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
 {% if has_params %}
-    share = get_package_share_directory("{{ pkg }}")
-    params = os.path.join(share, "config", "{{ pkg }}.params.yaml")
+    share = get_package_share_directory('{{ pkg }}')
+    params = os.path.join(share, 'config', '{{ pkg }}.params.yaml')
 
 {% endif %}
     node = Node(
-        package="{{ pkg }}",
-        executable="{{ pkg }}",
-        output="screen",
+        package='{{ pkg }}',
+        executable='{{ pkg }}',
+        output='screen',
 {% if has_params %}
         parameters=[params],
 {% endif %}

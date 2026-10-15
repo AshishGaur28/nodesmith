@@ -43,7 +43,7 @@ struct ApplyGainResult
   double out__output_pub__data{};
 };
 
-template <class In>
+template<class In>
 inline bool eval_apply_gain(
   [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
   [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
@@ -51,7 +51,7 @@ inline bool eval_apply_gain(
 {
   bool fault = false;
 
-  const double v_scaled = (in.data * state.gain);
+  const double v_scaled = in.data * state.gain;
 
   r2d::check_finite(v_scaled, fault);
   if (fault) {
@@ -69,7 +69,7 @@ struct HandleGetResult
   double out__res__gain{};
 };
 
-template <class In>
+template<class In>
 inline bool eval_handle_get(
   [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
   [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
@@ -97,7 +97,7 @@ struct HandleResetResult
   bool out__res__success{};
 };
 
-template <class In>
+template<class In>
 inline bool eval_handle_reset(
   [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
   [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
@@ -129,7 +129,7 @@ struct HandleSetResult
   double out__res__applied{};
 };
 
-template <class In>
+template<class In>
 inline bool eval_handle_set(
   [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
   [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
@@ -137,8 +137,8 @@ inline bool eval_handle_set(
 {
   bool fault = false;
 
-  const bool v_ok = ((in.gain >= 0.0) && (in.gain <= params.max_gain));
-  const double v_next = (v_ok ? in.gain : state.gain);
+  const bool v_ok = (in.gain >= 0.0) && (in.gain <= params.max_gain);
+  const double v_next = v_ok ? in.gain : state.gain;
 
   r2d::check_finite(v_next, fault);
   if (fault) {

@@ -10,13 +10,13 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    share = get_package_share_directory("counter_node")
-    params = os.path.join(share, "config", "counter_node.params.yaml")
+    share = get_package_share_directory('counter_node')
+    params = os.path.join(share, 'config', 'counter_node.params.yaml')
 
     node = Node(
-        package="counter_node",
-        executable="counter_node",
-        output="screen",
+        package='counter_node',
+        executable='counter_node',
+        output='screen',
         parameters=[params],
     )
     return LaunchDescription([node])

@@ -2,6 +2,8 @@
 // IR hash: a6de20eed059bc5dd26c590e4a2a3a072505576f0499346f76bb5f5b68d5a332
 #include "speed_planner_node/interfaces.hpp"
 
+#include <functional>
+
 namespace planning
 {
 
@@ -9,7 +11,8 @@ namespace planning
 // picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
 SpeedPlannerNodeInterfaces::SpeedPlannerNodeInterfaces(
   rclcpp::Node & node, SpeedPlannerNodeEngine & engine)
-: node_(node), engine_(engine)
+: node_(node),
+  engine_(engine)
 {
   group_state_domain_1_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -23,13 +26,16 @@ SpeedPlannerNodeInterfaces::SpeedPlannerNodeInterfaces(
   sub_range_sub_plan_ = binding::create_subscription<std_msgs::msg::Float64>(
     node_, names::kSubTopicRangeSub,
     rclcpp::QoS(names::kSubQosDepthRangeSub).reliable().durability_volatile(),
-    [this](std_msgs::msg::Float64::ConstSharedPtr msg) { run_plan(*msg); }, group_state_domain_1_);
+    std::bind(&SpeedPlannerNodeInterfaces::run_plan, this, std::placeholders::_1),
+    group_state_domain_1_);
 }
 
 void SpeedPlannerNodeInterfaces::start() {}
 
-void SpeedPlannerNodeInterfaces::run_plan(const std_msgs::msg::Float64 & in)
+void SpeedPlannerNodeInterfaces::run_plan(std_msgs::msg::Float64::ConstSharedPtr message)
 {
+  const auto & in = *message;
+
   const auto run = engine_.enter();
   if (!run) {
     return;

@@ -2,6 +2,7 @@
 // IR hash: cf473c6f24952073b0ad5f7ea6769da29b35ab9137f76e035719b2da74a0dfe8
 #include "counter_node/parameters.hpp"
 
+#include <functional>
 #include <limits>
 #include <string>
 #include <utility>
@@ -10,7 +11,8 @@ namespace demo
 {
 
 CounterNodeParameters::CounterNodeParameters(rclcpp::Node & node, CounterNodeEngine & engine)
-: engine_(engine), logger_(node.get_logger())
+: engine_(engine),
+  logger_(node.get_logger())
 {
   // The effective values include launch-file and command-line overrides.
   Params initial;
@@ -32,7 +34,18 @@ CounterNodeParameters::CounterNodeParameters(rclcpp::Node & node, CounterNodeEng
   }
 
   handle_ = binding::add_parameter_callback(
-    node, [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
+    node, std::bind(&CounterNodeParameters::on_set, this, std::placeholders::_1));
+}
+
+rcl_interfaces::msg::SetParametersResult CounterNodeParameters::reject(const std::string & why)
+{
+  RCLCPP_WARN(logger_, "parameter update rejected: %s", why.c_str());
+  engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);
+
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = false;
+  result.reason = why;
+  return result;
 }
 
 // Runs on the parameter-service thread, concurrently with the pipelines. It never touches state
@@ -41,15 +54,6 @@ CounterNodeParameters::CounterNodeParameters(rclcpp::Node & node, CounterNodeEng
 rcl_interfaces::msg::SetParametersResult CounterNodeParameters::on_set(
   const std::vector<rclcpp::Parameter> & updates)
 {
-  auto reject = [this](std::string why) {
-    RCLCPP_WARN(logger_, "parameter update rejected: %s", why.c_str());
-    engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);
-    rcl_interfaces::msg::SetParametersResult result;
-    result.successful = false;
-    result.reason = std::move(why);
-    return result;
-  };
-
   Params next = engine_.parameters();
   for (const auto & p : updates) {
     [[maybe_unused]] const std::string & name = p.get_name();

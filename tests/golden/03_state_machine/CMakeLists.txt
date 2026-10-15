@@ -35,8 +35,7 @@ ament_target_dependencies(counter_node_component
   rclcpp
   rclcpp_components
   std_msgs
-  std_srvs
-  )
+  std_srvs)
 rclcpp_components_register_nodes(counter_node_component "demo::CounterNode")
 
 add_executable(counter_node src/main.cpp src/app.cpp)

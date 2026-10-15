@@ -20,9 +20,15 @@ namespace binding
 
 // ---- process ----------------------------------------------------------------------------------
 
-inline void init(int argc, char ** argv) { rclcpp::init(argc, argv); }
+inline void init(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+}
 
-inline void shutdown() { rclcpp::shutdown(); }
+inline void shutdown()
+{
+  rclcpp::shutdown();
+}
 
 // ---- executors --------------------------------------------------------------------------------
 
@@ -39,7 +45,7 @@ inline std::unique_ptr<rclcpp::Executor> make_multi_threaded_executor(std::size_
 
 // ---- node resources ---------------------------------------------------------------------------
 
-template <class Message, class Callback>
+template<class Message, class Callback>
 typename rclcpp::Subscription<Message>::SharedPtr create_subscription(
   rclcpp::Node & node, const std::string & topic, const rclcpp::QoS & qos, Callback && callback,
   rclcpp::CallbackGroup::SharedPtr group)
@@ -49,7 +55,7 @@ typename rclcpp::Subscription<Message>::SharedPtr create_subscription(
   return node.create_subscription<Message>(topic, qos, std::forward<Callback>(callback), options);
 }
 
-template <class Service, class Callback>
+template<class Service, class Callback>
 typename rclcpp::Service<Service>::SharedPtr create_service(
   rclcpp::Node & node, const std::string & name, Callback && callback,
   rclcpp::CallbackGroup::SharedPtr group)
@@ -58,7 +64,7 @@ typename rclcpp::Service<Service>::SharedPtr create_service(
     name, std::forward<Callback>(callback), rclcpp::ServicesQoS(), group);
 }
 
-template <class Callback>
+template<class Callback>
 rclcpp::TimerBase::SharedPtr create_timer(
   rclcpp::Node & node, rclcpp::Clock::SharedPtr clock, std::chrono::milliseconds period,
   Callback && callback, rclcpp::CallbackGroup::SharedPtr group)
@@ -71,7 +77,7 @@ rclcpp::TimerBase::SharedPtr create_timer(
 
 using ParameterCallbackHandle = rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr;
 
-template <class Callback>
+template<class Callback>
 ParameterCallbackHandle add_parameter_callback(rclcpp::Node & node, Callback && callback)
 {
   return node.add_on_set_parameters_callback(std::forward<Callback>(callback));

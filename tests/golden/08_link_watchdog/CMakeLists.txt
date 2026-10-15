@@ -33,8 +33,7 @@ ament_target_dependencies(link_watchdog_node_component
   rcl_interfaces
   rclcpp
   rclcpp_components
-  std_msgs
-  )
+  std_msgs)
 rclcpp_components_register_nodes(link_watchdog_node_component "monitoring::LinkWatchdogNode")
 
 add_executable(link_watchdog_node src/main.cpp src/app.cpp)

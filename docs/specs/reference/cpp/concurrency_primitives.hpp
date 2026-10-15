@@ -28,27 +28,33 @@ class SnapshotRing {
  public:
   explicit SnapshotRing(const T & initial) { slots_[0].value = initial; }
 
-  class Guard {  // pins one snapshot for the lifetime of an execution
-   public:
+  // Pins one snapshot for the lifetime of an execution. Obtain it from `acquire()`; `slot_` is
+  // internal.
+  struct Guard {
+    explicit Guard(Slot * s) : slot_(s) {}
     Guard(Guard && o) noexcept : slot_(std::exchange(o.slot_, nullptr)) {}
     Guard(const Guard &) = delete;
     Guard & operator=(const Guard &) = delete;
-    ~Guard() { if (slot_) slot_->readers.fetch_sub(1); }
+    ~Guard() {
+      if (slot_) {
+        slot_->readers.fetch_sub(1);
+      }
+    }
     const T & operator*() const { return slot_->value; }
     const T * operator->() const { return &slot_->value; }
 
-   private:
-    friend class SnapshotRing;
-    explicit Guard(Slot * s) : slot_(s) {}
     Slot * slot_;
   };
 
-  Guard acquire() noexcept {  // seq_cst throughout: the reader/writer handshake is a Dekker pattern
-    for (;;) {
+  // seq_cst throughout: the reader/writer handshake is a Dekker pattern.
+  Guard acquire() noexcept {
+    while (true) {
       const std::size_t i = current_.load();
       slots_[i].readers.fetch_add(1);
-      if (current_.load() == i) return Guard(&slots_[i]);  // still current: contents are stable
-      slots_[i].readers.fetch_sub(1);                      // raced with a publish: retry
+      if (current_.load() == i) {
+        return Guard(&slots_[i]);  // still current: contents are stable
+      }
+      slots_[i].readers.fetch_sub(1);  // raced with a publish: retry
     }
   }
 
@@ -79,15 +85,19 @@ class SnapshotRing {
 // Run gate (SPEC-12 §6): executions enter only while open; deactivate closes and drains.
 class RunGate {
  public:
-  class Scope {
-   public:
+  // Held while an execution runs. `if (!scope)` means the gate was closed and the caller must
+  // not run. The data members are internal.
+  struct Scope {
     explicit Scope(RunGate & g) noexcept : gate_(g), entered_(g.try_enter()) {}
-    ~Scope() { if (entered_) gate_.leave(); }
+    ~Scope() {
+      if (entered_) {
+        gate_.leave();
+      }
+    }
     Scope(const Scope &) = delete;
     Scope & operator=(const Scope &) = delete;
     explicit operator bool() const noexcept { return entered_; }
 
-   private:
     RunGate & gate_;
     bool entered_;
   };
@@ -100,7 +110,9 @@ class RunGate {
     word_.fetch_and(~kOpen);
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while ((word_.load() & ~kOpen) != 0) {
-      if (std::chrono::steady_clock::now() >= deadline) return false;
+      if (std::chrono::steady_clock::now() >= deadline) {
+        return false;
+      }
       std::this_thread::yield();
     }
     return true;
@@ -111,7 +123,9 @@ class RunGate {
   bool try_enter() noexcept {
     std::uint64_t w = word_.load();
     do {
-      if (!(w & kOpen)) return false;
+      if (!(w & kOpen)) {
+        return false;
+      }
     } while (!word_.compare_exchange_weak(w, w + 1));
     return true;
   }

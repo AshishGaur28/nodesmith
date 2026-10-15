@@ -2,13 +2,16 @@
 // IR hash: b38a0259678c01ef7beb38231c50a262057d689c70f2a5d9fae3a503f0d5820b
 #include "gain_node/interfaces.hpp"
 
+#include <functional>
+
 namespace processing
 {
 
 // Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
 // picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
 GainNodeInterfaces::GainNodeInterfaces(rclcpp::Node & node, GainNodeEngine & engine)
-: node_(node), engine_(engine)
+: node_(node),
+  engine_(engine)
 {
   group_state_domain_1_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -19,41 +22,34 @@ GainNodeInterfaces::GainNodeInterfaces(rclcpp::Node & node, GainNodeEngine & eng
   sub_input_sub_apply_gain_ = binding::create_subscription<std_msgs::msg::Float64>(
     node_, names::kSubTopicInputSub,
     rclcpp::QoS(names::kSubQosDepthInputSub).reliable().durability_volatile(),
-    [this](std_msgs::msg::Float64::ConstSharedPtr msg) { run_apply_gain(*msg); },
+    std::bind(&GainNodeInterfaces::run_apply_gain, this, std::placeholders::_1),
     group_state_domain_1_);
 
   srv_get_gain_srv_ = binding::create_service<my_interfaces::srv::GetGain>(
     node_, names::kServiceNameGetGainSrv,
-    [this](
-      const std::shared_ptr<my_interfaces::srv::GetGain::Request> request,
-      std::shared_ptr<my_interfaces::srv::GetGain::Response> response) {
-      run_handle_get(*request, *response);
-    },
+    std::bind(
+      &GainNodeInterfaces::run_handle_get, this, std::placeholders::_1, std::placeholders::_2),
     group_state_domain_1_);
 
   srv_reset_gain_srv_ = binding::create_service<std_srvs::srv::Trigger>(
     node_, names::kServiceNameResetGainSrv,
-    [this](
-      const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-      run_handle_reset(*request, *response);
-    },
+    std::bind(
+      &GainNodeInterfaces::run_handle_reset, this, std::placeholders::_1, std::placeholders::_2),
     group_state_domain_1_);
 
   srv_set_gain_srv_ = binding::create_service<my_interfaces::srv::SetGain>(
     node_, names::kServiceNameSetGainSrv,
-    [this](
-      const std::shared_ptr<my_interfaces::srv::SetGain::Request> request,
-      std::shared_ptr<my_interfaces::srv::SetGain::Response> response) {
-      run_handle_set(*request, *response);
-    },
+    std::bind(
+      &GainNodeInterfaces::run_handle_set, this, std::placeholders::_1, std::placeholders::_2),
     group_state_domain_1_);
 }
 
 void GainNodeInterfaces::start() {}
 
-void GainNodeInterfaces::run_apply_gain(const std_msgs::msg::Float64 & in)
+void GainNodeInterfaces::run_apply_gain(std_msgs::msg::Float64::ConstSharedPtr message)
 {
+  const auto & in = *message;
+
   const auto run = engine_.enter();
   if (!run) {
     return;
@@ -75,8 +71,12 @@ void GainNodeInterfaces::run_apply_gain(const std_msgs::msg::Float64 & in)
 }
 
 void GainNodeInterfaces::run_handle_get(
-  const my_interfaces::srv::GetGain::Request & in, my_interfaces::srv::GetGain::Response & res)
+  const std::shared_ptr<my_interfaces::srv::GetGain::Request> request,
+  std::shared_ptr<my_interfaces::srv::GetGain::Response> response)
 {
+  const auto & in = *request;
+  auto & res = *response;
+
   const auto run = engine_.enter();
   if (!run) {
     res = my_interfaces::srv::GetGain::Response();
@@ -97,8 +97,12 @@ void GainNodeInterfaces::run_handle_get(
 }
 
 void GainNodeInterfaces::run_handle_reset(
-  const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res)
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
+  const auto & in = *request;
+  auto & res = *response;
+
   const auto run = engine_.enter();
   if (!run) {
     res = std_srvs::srv::Trigger::Response();
@@ -120,8 +124,12 @@ void GainNodeInterfaces::run_handle_reset(
 }
 
 void GainNodeInterfaces::run_handle_set(
-  const my_interfaces::srv::SetGain::Request & in, my_interfaces::srv::SetGain::Response & res)
+  const std::shared_ptr<my_interfaces::srv::SetGain::Request> request,
+  std::shared_ptr<my_interfaces::srv::SetGain::Response> response)
 {
+  const auto & in = *request;
+  auto & res = *response;
+
   const auto run = engine_.enter();
   if (!run) {
     res = my_interfaces::srv::SetGain::Response();

@@ -28,7 +28,7 @@ public:
   void start();
 
 private:
-  void run_plan(const std_msgs::msg::Float64 & in);
+  void run_plan(std_msgs::msg::Float64::ConstSharedPtr message);
 
   rclcpp::Node & node_;
   SpeedPlannerNodeEngine & engine_;

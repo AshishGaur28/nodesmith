@@ -27,7 +27,7 @@ public:
   void start();
 
 private:
-  void run_echo(const std_msgs::msg::Float64 & in);
+  void run_echo(std_msgs::msg::Float64::ConstSharedPtr message);
 
   rclcpp::Node & node_;
   EchoNodeEngine & engine_;

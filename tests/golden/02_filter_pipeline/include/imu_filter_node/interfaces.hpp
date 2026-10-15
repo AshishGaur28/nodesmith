@@ -28,7 +28,7 @@ public:
   void start();
 
 private:
-  void run_filter_imu(const sensor_msgs::msg::Imu & in);
+  void run_filter_imu(sensor_msgs::msg::Imu::ConstSharedPtr message);
 
   rclcpp::Node & node_;
   ImuFilterNodeEngine & engine_;

@@ -30,13 +30,16 @@ public:
   void start();
 
 private:
-  void run_apply_gain(const std_msgs::msg::Float64 & in);
+  void run_apply_gain(std_msgs::msg::Float64::ConstSharedPtr message);
   void run_handle_get(
-    const my_interfaces::srv::GetGain::Request & in, my_interfaces::srv::GetGain::Response & res);
+    const std::shared_ptr<my_interfaces::srv::GetGain::Request> request,
+    std::shared_ptr<my_interfaces::srv::GetGain::Response> response);
   void run_handle_reset(
-    const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res);
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response);
   void run_handle_set(
-    const my_interfaces::srv::SetGain::Request & in, my_interfaces::srv::SetGain::Response & res);
+    const std::shared_ptr<my_interfaces::srv::SetGain::Request> request,
+    std::shared_ptr<my_interfaces::srv::SetGain::Response> response);
 
   rclcpp::Node & node_;
   GainNodeEngine & engine_;

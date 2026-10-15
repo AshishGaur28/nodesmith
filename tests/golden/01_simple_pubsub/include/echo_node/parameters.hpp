@@ -7,6 +7,7 @@
 
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <string>
 #include <vector>
 
 #include "echo_node/engine.hpp"
@@ -27,6 +28,7 @@ public:
 
 private:
   rcl_interfaces::msg::SetParametersResult on_set(const std::vector<rclcpp::Parameter> & updates);
+  rcl_interfaces::msg::SetParametersResult reject(const std::string & why);
 
   EchoNodeEngine & engine_;
   rclcpp::Logger logger_;

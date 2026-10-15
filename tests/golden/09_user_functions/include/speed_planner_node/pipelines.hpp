@@ -46,7 +46,7 @@ struct PlanResult
   double out__speed_pub__data{};
 };
 
-template <class In>
+template<class In>
 inline bool eval_plan(
   [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
   [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,

@@ -57,12 +57,10 @@ int main() {
   }
 
   engine.report(r2d::Code::ERR_RUN_103, demo::names::kParametersWho);
-  int drained = 0;
-  engine.drain_diagnostics([&](r2d::Code code, const char * who) {
-    CHECK(code == r2d::Code::ERR_RUN_103 && std::string(who) == "parameters");
-    ++drained;
-  });
-  CHECK(drained == 1);
+  const auto taken = engine.take_diagnostics();
+  CHECK(taken.size() == 1);
+  CHECK(taken[0].code == r2d::Code::ERR_RUN_103 && std::string(taken[0].who) == "parameters");
+  CHECK(engine.take_diagnostics().empty());  // taken once
   std::puts("ok");
   return 0;
 }

@@ -2,6 +2,7 @@
 // IR hash: 746d5e920b285d996bad9eb570c5db8d78e04cd58df8e88bd248b8cc9436dd16
 #include "link_watchdog_node/parameters.hpp"
 
+#include <functional>
 #include <limits>
 #include <string>
 #include <utility>
@@ -11,7 +12,8 @@ namespace monitoring
 
 LinkWatchdogNodeParameters::LinkWatchdogNodeParameters(
   rclcpp::Node & node, LinkWatchdogNodeEngine & engine)
-: engine_(engine), logger_(node.get_logger())
+: engine_(engine),
+  logger_(node.get_logger())
 {
   // The effective values include launch-file and command-line overrides.
   Params initial;
@@ -30,7 +32,18 @@ LinkWatchdogNodeParameters::LinkWatchdogNodeParameters(
   }
 
   handle_ = binding::add_parameter_callback(
-    node, [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
+    node, std::bind(&LinkWatchdogNodeParameters::on_set, this, std::placeholders::_1));
+}
+
+rcl_interfaces::msg::SetParametersResult LinkWatchdogNodeParameters::reject(const std::string & why)
+{
+  RCLCPP_WARN(logger_, "parameter update rejected: %s", why.c_str());
+  engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);
+
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = false;
+  result.reason = why;
+  return result;
 }
 
 // Runs on the parameter-service thread, concurrently with the pipelines. It never touches state
@@ -39,15 +52,6 @@ LinkWatchdogNodeParameters::LinkWatchdogNodeParameters(
 rcl_interfaces::msg::SetParametersResult LinkWatchdogNodeParameters::on_set(
   const std::vector<rclcpp::Parameter> & updates)
 {
-  auto reject = [this](std::string why) {
-    RCLCPP_WARN(logger_, "parameter update rejected: %s", why.c_str());
-    engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);
-    rcl_interfaces::msg::SetParametersResult result;
-    result.successful = false;
-    result.reason = std::move(why);
-    return result;
-  };
-
   Params next = engine_.parameters();
   for (const auto & p : updates) {
     [[maybe_unused]] const std::string & name = p.get_name();

@@ -33,9 +33,10 @@ def qos_expression(qos: dict, depth: str) -> str:
 class InterfacesBuilder:
     """Collects the members, creation statements and handler declarations of the adapter."""
 
-    def __init__(self, ir: dict, pipelines: list[PipelineInfo]):
+    def __init__(self, ir: dict, pipelines: list[PipelineInfo], class_name: str):
         self.ir = ir
         self.pipelines = pipelines
+        self.class_name = class_name
         interfaces = ir["interfaces"]
         self.publishers = {e["identifier"]: e for e in interfaces["publishers"]}
         self.subscribers = {e["identifier"]: e for e in interfaces["subscribers"]}
@@ -108,7 +109,7 @@ class InterfacesBuilder:
         member_name = f"sub_{source}_{pipeline}_"
         qos = qos_expression(subscriber["qos"], names.sub_depth(source))
         self.members.append(f"rclcpp::Subscription<{type_}>::SharedPtr {member_name};")
-        callback = f"[this]({type_}::ConstSharedPtr msg) {{ run_{pipeline}(*msg); }}"
+        callback = self._bound(pipeline, 1)
         self.creates += [
             "",
             call(
@@ -116,20 +117,14 @@ class InterfacesBuilder:
                 ["node_", names.sub_topic(source), qos, callback, f"group_{group}_"],
             ),
         ]
-        self.methods.append(signature(f"void run_{pipeline}(", [f"const {type_} & in"], ";", "  "))
+        self.methods.append(
+            signature(f"void run_{pipeline}(", [f"{type_}::ConstSharedPtr message"], ";", "  ")
+        )
 
     def _service(self, pipeline: str, source: str, group: str) -> None:
         type_ = message_cpp(self.services[source]["type_symbol"])
         self.members.append(f"rclcpp::Service<{type_}>::SharedPtr srv_{source}_;")
-        callback = "\n".join(
-            [
-                "[this](",
-                f"    const std::shared_ptr<{type_}::Request> request,",
-                f"    std::shared_ptr<{type_}::Response> response) {{",
-                f"  run_{pipeline}(*request, *response);",
-                "}",
-            ]
-        )
+        callback = self._bound(pipeline, 2)
         self.creates += [
             "",
             call(
@@ -140,7 +135,10 @@ class InterfacesBuilder:
         self.methods.append(
             signature(
                 f"void run_{pipeline}(",
-                [f"const {type_}::Request & in", f"{type_}::Response & res"],
+                [
+                    f"const std::shared_ptr<{type_}::Request> request",
+                    f"std::shared_ptr<{type_}::Response> response",
+                ],
                 ";",
                 "  ",
             )
@@ -157,10 +155,15 @@ class InterfacesBuilder:
             "",
             call(
                 f"timer_{pipeline}_ = binding::create_timer(",
-                ["node_", clock, period, f"[this]() {{ run_{pipeline}(); }}", f"group_{group}_"],
+                ["node_", clock, period, self._bound(pipeline, 0), f"group_{group}_"],
             ),
         ]
         self.methods.append(f"  void run_{pipeline}();")
+
+    def _bound(self, pipeline: str, arguments: int) -> str:
+        """``std::bind`` of a handler to this object, for the callback a ROS call expects."""
+        placeholders = "".join(f", std::placeholders::_{n}" for n in range(1, arguments + 1))
+        return f"std::bind(&{self.class_name}::run_{pipeline}, this{placeholders})"
 
     def _clocks(self) -> None:
         timer_clocks = {p.trigger["clock"] for p in self.pipelines if p.trigger["kind"] == "timer"}
@@ -188,6 +191,10 @@ class InterfacesBuilder:
         if pipeline.uses_now:
             call_arguments.append("now_sec")
         lines = [signature(f"void {class_name}::run_{name}(", _run_parameters(pipeline))]
+        if kind == "subscriber":
+            lines += ["  const auto & in = *message;", ""]
+        elif kind == "service":
+            lines += ["  const auto & in = *request;", "  auto & res = *response;", ""]
         if kind == "timer":
             lines += [
                 "  // A firing while the previous execution still runs is skipped (ERR_RUN_102).",
@@ -244,10 +251,13 @@ class InterfacesBuilder:
 def _run_parameters(pipeline: PipelineInfo) -> list[str]:
     kind = pipeline.trigger["kind"]
     if kind == "subscriber":
-        return [f"const {message_cpp(pipeline.input_type)} & in"]
+        return [f"{message_cpp(pipeline.input_type)}::ConstSharedPtr message"]
     if kind == "service":
         service = message_cpp(pipeline.input_type)
-        return [f"const {service}::Request & in", f"{service}::Response & res"]
+        return [
+            f"const std::shared_ptr<{service}::Request> request",
+            f"std::shared_ptr<{service}::Response> response",
+        ]
     return []
 
 

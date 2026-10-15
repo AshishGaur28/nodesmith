@@ -28,7 +28,7 @@ struct State
 
 inline bool constraint_0([[maybe_unused]] const Params & params, [[maybe_unused]] bool & fault)
 {
-  const bool n2 = (params.step <= params.limit);
+  const bool n2 = params.step <= params.limit;
 
   return n2;
 }
@@ -64,7 +64,7 @@ struct ResetResult
   bool out__res__success{};
 };
 
-template <class In>
+template<class In>
 inline bool eval_reset(
   [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
   [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
@@ -101,9 +101,9 @@ inline bool eval_tick(
   bool fault = false;
 
   const std::int64_t v_next =
-    ((r2d::wrap_add<std::int64_t>(state.count, params.step) >= params.limit)
-       ? static_cast<std::int64_t>(std::int32_t{0})
-       : r2d::wrap_add<std::int64_t>(state.count, params.step));
+    (r2d::wrap_add<std::int64_t>(state.count, params.step) >= params.limit) ?
+    static_cast<std::int64_t>(std::int32_t{0}) :
+    r2d::wrap_add<std::int64_t>(state.count, params.step);
 
   if (fault) {
     return false;

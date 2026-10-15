@@ -2,13 +2,16 @@
 // IR hash: cf473c6f24952073b0ad5f7ea6769da29b35ab9137f76e035719b2da74a0dfe8
 #include "counter_node/interfaces.hpp"
 
+#include <functional>
+
 namespace demo
 {
 
 // Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
 // picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
 CounterNodeInterfaces::CounterNodeInterfaces(rclcpp::Node & node, CounterNodeEngine & engine)
-: node_(node), engine_(engine)
+: node_(node),
+  engine_(engine)
 {
   group_state_domain_1_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -18,23 +21,24 @@ CounterNodeInterfaces::CounterNodeInterfaces(rclcpp::Node & node, CounterNodeEng
 
   srv_reset_srv_ = binding::create_service<std_srvs::srv::Trigger>(
     node_, names::kServiceNameResetSrv,
-    [this](
-      const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-      run_reset(*request, *response);
-    },
+    std::bind(
+      &CounterNodeInterfaces::run_reset, this, std::placeholders::_1, std::placeholders::_2),
     group_state_domain_1_);
 
   timer_tick_ = binding::create_timer(
     node_, node_.get_clock(), std::chrono::milliseconds(names::kPeriodMsTick),
-    [this]() { run_tick(); }, group_state_domain_1_);
+    std::bind(&CounterNodeInterfaces::run_tick, this), group_state_domain_1_);
 }
 
 void CounterNodeInterfaces::start() {}
 
 void CounterNodeInterfaces::run_reset(
-  const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res)
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
+  const auto & in = *request;
+  auto & res = *response;
+
   const auto run = engine_.enter();
   if (!run) {
     res = std_srvs::srv::Trigger::Response();

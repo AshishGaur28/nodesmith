@@ -41,9 +41,8 @@ add_library({{ pkg }}_component SHARED ${COMPONENT_SOURCES})
 target_include_directories({{ pkg }}_component PUBLIC include)
 ament_target_dependencies({{ pkg }}_component
 {% for dep in depends %}
-  {{ dep }}
+  {{ dep }}{{ ")" if loop.last else "" }}
 {% endfor %}
-  )
 rclcpp_components_register_nodes({{ pkg }}_component "{{ plugin }}")
 
 add_executable({{ pkg }} src/main.cpp src/app.cpp)

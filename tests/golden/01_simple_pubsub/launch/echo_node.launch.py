@@ -7,8 +7,8 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     node = Node(
-        package="echo_node",
-        executable="echo_node",
-        output="screen",
+        package='echo_node',
+        executable='echo_node',
+        output='screen',
     )
     return LaunchDescription([node])

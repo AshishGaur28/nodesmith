@@ -2,6 +2,7 @@
 // IR hash: fb309b88a03a72e42a90ee7c1ec2c8d8ac9d10088a8c8981452fe04f71ab76ef
 #include "echo_node/parameters.hpp"
 
+#include <functional>
 #include <limits>
 #include <string>
 #include <utility>
@@ -10,7 +11,8 @@ namespace demo
 {
 
 EchoNodeParameters::EchoNodeParameters(rclcpp::Node & node, EchoNodeEngine & engine)
-: engine_(engine), logger_(node.get_logger())
+: engine_(engine),
+  logger_(node.get_logger())
 {
   // The effective values include launch-file and command-line overrides.
   Params initial;
@@ -20,7 +22,18 @@ EchoNodeParameters::EchoNodeParameters(rclcpp::Node & node, EchoNodeEngine & eng
   }
 
   handle_ = binding::add_parameter_callback(
-    node, [this](const std::vector<rclcpp::Parameter> & updates) { return on_set(updates); });
+    node, std::bind(&EchoNodeParameters::on_set, this, std::placeholders::_1));
+}
+
+rcl_interfaces::msg::SetParametersResult EchoNodeParameters::reject(const std::string & why)
+{
+  RCLCPP_WARN(logger_, "parameter update rejected: %s", why.c_str());
+  engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);
+
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = false;
+  result.reason = why;
+  return result;
 }
 
 // Runs on the parameter-service thread, concurrently with the pipelines. It never touches state
@@ -29,15 +42,6 @@ EchoNodeParameters::EchoNodeParameters(rclcpp::Node & node, EchoNodeEngine & eng
 rcl_interfaces::msg::SetParametersResult EchoNodeParameters::on_set(
   const std::vector<rclcpp::Parameter> & updates)
 {
-  auto reject = [this](std::string why) {
-    RCLCPP_WARN(logger_, "parameter update rejected: %s", why.c_str());
-    engine_.report(r2d::Code::ERR_RUN_103, names::kParametersWho);
-    rcl_interfaces::msg::SetParametersResult result;
-    result.successful = false;
-    result.reason = std::move(why);
-    return result;
-  };
-
   Params next = engine_.parameters();
   for (const auto & p : updates) {
     [[maybe_unused]] const std::string & name = p.get_name();

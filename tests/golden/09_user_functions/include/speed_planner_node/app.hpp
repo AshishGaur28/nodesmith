@@ -27,8 +27,14 @@ private:
   // Initialises ROS first and shuts it down last, after the node and the executor are gone.
   struct RosContext
   {
-    RosContext(int argc, char ** argv) { binding::init(argc, argv); }
-    ~RosContext() { binding::shutdown(); }
+    RosContext(int argc, char ** argv)
+    {
+      binding::init(argc, argv);
+    }
+    ~RosContext()
+    {
+      binding::shutdown();
+    }
     RosContext(const RosContext &) = delete;
     RosContext & operator=(const RosContext &) = delete;
   };

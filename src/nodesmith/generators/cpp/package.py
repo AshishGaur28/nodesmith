@@ -134,7 +134,7 @@ def _node_files(ir: dict, pipelines: list[PipelineInfo], hash_: str) -> dict:
     meta = ir["node_meta"]
     package_name, class_name = meta["name"], camel(meta["name"])
     depends, headers = _message_packages(ir)
-    interfaces = InterfacesBuilder(ir, pipelines).build()
+    interfaces = InterfacesBuilder(ir, pipelines, f"{class_name}Interfaces").build()
     has_params = bool(ir["parameters"])
     shared = {
         "ir_hash": hash_,

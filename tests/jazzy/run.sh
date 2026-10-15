@@ -110,7 +110,7 @@ if [ "$LINT" = 1 ]; then
       | sed -E 's|.*/([a-z_0-9]+)\.xunit\.xml|\1|' | sort -u); do
     sample="$(find ws/build -name "$linter.xunit.xml" -print0 | xargs -0 grep -lE '<failure' | sort | head -1)"
     echo "-- first $linter finding: $sample"
-    grep -vE '^\s*$' "$sample" | head -50
+    grep -vE '^\s*$' "$sample" | awk 'NR <= 50'
   done
 fi
 exit "$status"

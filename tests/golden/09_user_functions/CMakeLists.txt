@@ -42,8 +42,7 @@ ament_target_dependencies(speed_planner_node_component
   rcl_interfaces
   rclcpp
   rclcpp_components
-  std_msgs
-  )
+  std_msgs)
 rclcpp_components_register_nodes(speed_planner_node_component "planning::SpeedPlannerNode")
 
 add_executable(speed_planner_node src/main.cpp src/app.cpp)

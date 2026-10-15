@@ -2,13 +2,16 @@
 // IR hash: fb309b88a03a72e42a90ee7c1ec2c8d8ac9d10088a8c8981452fe04f71ab76ef
 #include "echo_node/interfaces.hpp"
 
+#include <functional>
+
 namespace demo
 {
 
 // Everything is created here, before any callback can run (SPEC-03 §4.2). Each callback group is
 // picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
 EchoNodeInterfaces::EchoNodeInterfaces(rclcpp::Node & node, EchoNodeEngine & engine)
-: node_(node), engine_(engine)
+: node_(node),
+  engine_(engine)
 {
   group_pipeline_echo_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -19,13 +22,15 @@ EchoNodeInterfaces::EchoNodeInterfaces(rclcpp::Node & node, EchoNodeEngine & eng
   sub_in_sub_echo_ = binding::create_subscription<std_msgs::msg::Float64>(
     node_, names::kSubTopicInSub,
     rclcpp::QoS(names::kSubQosDepthInSub).reliable().durability_volatile(),
-    [this](std_msgs::msg::Float64::ConstSharedPtr msg) { run_echo(*msg); }, group_pipeline_echo_);
+    std::bind(&EchoNodeInterfaces::run_echo, this, std::placeholders::_1), group_pipeline_echo_);
 }
 
 void EchoNodeInterfaces::start() {}
 
-void EchoNodeInterfaces::run_echo(const std_msgs::msg::Float64 & in)
+void EchoNodeInterfaces::run_echo(std_msgs::msg::Float64::ConstSharedPtr message)
 {
+  const auto & in = *message;
+
   const auto run = engine_.enter();
   if (!run) {
     return;

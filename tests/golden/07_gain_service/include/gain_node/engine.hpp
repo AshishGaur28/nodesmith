@@ -8,6 +8,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "gain_node/interface_names.hpp"
 #include "gain_node/pipelines.hpp"
@@ -19,7 +20,17 @@ namespace processing
 class GainNodeEngine
 {
 public:
-  GainNodeEngine() : params_(Params{}) {}
+  // One entry of the diagnostics ring: what happened, and in which pipeline.
+  struct Diagnostic
+  {
+    r2d::Code code;
+    const char * who;
+  };
+
+  GainNodeEngine()
+  : params_(Params{})
+  {
+  }
   GainNodeEngine(const GainNodeEngine &) = delete;
   GainNodeEngine & operator=(const GainNodeEngine &) = delete;
 
@@ -32,18 +43,21 @@ public:
     if (auto why = validate(initial)) {
       return why;
     }
-    params_.publish([&](Params & slot) { slot = initial; });
+    params_.publish(Assign{initial});
     return std::nullopt;
   }
 
-  Params parameters() { return *params_.acquire(); }
+  Params parameters()
+  {
+    return *params_.acquire();
+  }
 
   std::optional<std::string> update(const Params & next)
   {
     if (auto why = validate(next)) {
       return why;
     }
-    if (!params_.publish([&](Params & slot) { slot = next; })) {
+    if (!params_.publish(Assign{next})) {
       return std::string("parameter store busy, retry");
     }
     return std::nullopt;
@@ -54,26 +68,37 @@ public:
   // returns, and the caller keeps it until it has published the result (SPEC-12 section 6).
   // Check it with `if (!run)`.
 
-  void open() noexcept { gate_.open(); }
+  void open() noexcept
+  {
+    gate_.open();
+  }
 
-  r2d::RunGate::Scope enter() noexcept { return r2d::RunGate::Scope(gate_); }
+  r2d::RunGate::Scope enter() noexcept
+  {
+    return r2d::RunGate::Scope(gate_);
+  }
 
   // ---- diagnostics ----------------------------------------------------------------------------
   // Any thread reports; one consumer drains (SPEC-12 section 7).
 
-  void report(r2d::Code code, const char * who) noexcept { diag_.report(code, who); }
-
-  template <class Emit>
-  void drain_diagnostics(Emit && emit)
+  void report(r2d::Code code, const char * who) noexcept
   {
-    diag_.drain(emit);
+    diag_.report(code, who);
+  }
+
+  // Removes and returns what was reported since the last call, oldest first.
+  std::vector<Diagnostic> take_diagnostics()
+  {
+    std::vector<Diagnostic> taken;
+    diag_.drain(Collect{taken});
+    return taken;
   }
 
   // ---- pipelines ------------------------------------------------------------------------------
   // `In` is the trigger's message or request type. A pipeline returns nothing when a numeric
   // fault stopped it: the fault is reported as ERR_RUN_101 and nothing is committed.
 
-  template <class In>
+  template<class In>
   std::optional<ApplyGainResult> run_apply_gain(const r2d::RunGate::Scope &, const In & in)
   {
     // One snapshot for the whole execution (SPEC-12 section 5).
@@ -89,7 +114,7 @@ public:
     return r;
   }
 
-  template <class In>
+  template<class In>
   std::optional<HandleGetResult> run_handle_get(const r2d::RunGate::Scope &, const In & in)
   {
     // One snapshot for the whole execution (SPEC-12 section 5).
@@ -105,7 +130,7 @@ public:
     return r;
   }
 
-  template <class In>
+  template<class In>
   std::optional<HandleResetResult> run_handle_reset(const r2d::RunGate::Scope &, const In & in)
   {
     // One snapshot for the whole execution (SPEC-12 section 5).
@@ -124,7 +149,7 @@ public:
     return r;
   }
 
-  template <class In>
+  template<class In>
   std::optional<HandleSetResult> run_handle_set(const r2d::RunGate::Scope &, const In & in)
   {
     // One snapshot for the whole execution (SPEC-12 section 5).
@@ -144,6 +169,26 @@ public:
   }
 
 private:
+  // Copies a value into the parameter slot that `publish` hands out.
+  struct Assign
+  {
+    const Params & value;
+    void operator()(Params & slot) const
+    {
+      slot = value;
+    }
+  };
+
+  // Receives the entries of the diagnostics ring.
+  struct Collect
+  {
+    std::vector<Diagnostic> & into;
+    void operator()(r2d::Code code, const char * who) const
+    {
+      into.push_back({code, who});
+    }
+  };
+
   // One slot per thread (1), the current one and a free one (SPEC-12 section 5).
   r2d::SnapshotRing<Params, 3> params_;
 

@@ -35,8 +35,7 @@ ament_target_dependencies(imu_filter_node_component
   rclcpp
   rclcpp_components
   sensor_msgs
-  std_msgs
-  )
+  std_msgs)
 rclcpp_components_register_nodes(imu_filter_node_component "sensors::chassis::ImuFilterNode")
 
 add_executable(imu_filter_node src/main.cpp src/app.cpp)

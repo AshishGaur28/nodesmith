@@ -37,8 +37,7 @@ ament_target_dependencies(gain_node_component
   rclcpp
   rclcpp_components
   std_msgs
-  std_srvs
-  )
+  std_srvs)
 rclcpp_components_register_nodes(gain_node_component "processing::GainNode")
 
 add_executable(gain_node src/main.cpp src/app.cpp)

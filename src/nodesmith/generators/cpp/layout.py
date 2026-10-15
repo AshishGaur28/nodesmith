@@ -29,9 +29,35 @@ def call(head: str, arguments: list[str], tail: str = ");", indent: str = "") ->
     return "\n".join(lines)
 
 
+def strip_outer_parentheses(expression: str) -> str:
+    """``(a && b)`` as ``a && b``: the parentheses that enclose the whole expression say nothing,
+    and only make a wrapped expression harder to read."""
+    if not (expression.startswith("(") and expression.endswith(")")):
+        return expression
+    depth, quoted, i = 0, False, 0
+    while i < len(expression):
+        char = expression[i]
+        if quoted:
+            if char == "\\":
+                i += 1
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0 and i != len(expression) - 1:
+                return expression  # the first parenthesis closes before the end
+        i += 1
+    return expression[1:-1]
+
+
 def assign(target: str, expression: str, indent: str = "") -> str:
     """``target = expression;`` on one line if it fits, else broken after the ``=`` and, if the
     expression is still too long, at its ternary and logical operators."""
+    expression = strip_outer_parentheses(expression)
     one_line = f"{indent}{target} = {expression};"
     if len(one_line) <= LIMIT:
         return one_line

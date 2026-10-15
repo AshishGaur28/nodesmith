@@ -51,7 +51,7 @@ struct FilterImuResult
   std::string out__status_pub__data{};
 };
 
-template <class In>
+template<class In>
 inline bool eval_filter_imu(
   [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
   [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
@@ -60,9 +60,9 @@ inline bool eval_filter_imu(
   bool fault = false;
 
   const double v_z = r2d::low_pass(in.linear_acceleration.z, state.prev_z, params.alpha, fault);
-  const bool v_over = (std::fabs(v_z) > params.max_accel);
+  const bool v_over = std::fabs(v_z) > params.max_accel;
   const std::string n7 = std::string(in.header.frame_id);
-  const std::string n10 = (v_over ? std::string("OVERLIMIT") : std::string("OK"));
+  const std::string n10 = v_over ? std::string("OVERLIMIT") : std::string("OK");
 
   r2d::check_finite(v_z, fault);
   if (fault) {

@@ -31,7 +31,8 @@ public:
 
 private:
   void run_reset(
-    const std_srvs::srv::Trigger::Request & in, std_srvs::srv::Trigger::Response & res);
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response);
   void run_tick();
 
   rclcpp::Node & node_;

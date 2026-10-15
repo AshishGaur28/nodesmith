@@ -17,4 +17,20 @@ ContinuationIndentWidth: 2
 DerivePointerAlignment: false
 PointerAlignment: Middle
 ReflowComments: false
+SpaceAfterTemplateKeyword: false
+BreakBeforeTernaryOperators: false
+AlignOperands: DontAlign
+
+# ament_uncrustify removes the spaces inside one-line braces, which clang-format cannot, so
+# bodies are never put on one line (only empty ones stay `{}`).
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortLambdasOnASingleLine: Empty
+AllowShortBlocksOnASingleLine: Never
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+
+# One initializer per line, the colon first (the ROS 2 constructor style).
+BreakConstructorInitializers: BeforeColon
+PackConstructorInitializers: Never
 ...

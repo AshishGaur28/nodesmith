@@ -74,8 +74,8 @@ inline bool eval_check_link(
 {
   bool fault = false;
 
-  const double v_age = (now_sec - state.last_seen);
-  const bool v_alive = (v_age <= params.timeout_s);
+  const double v_age = now_sec - state.last_seen;
+  const bool v_alive = v_age <= params.timeout_s;
 
   r2d::check_finite(v_age, fault);
   if (fault) {
@@ -94,7 +94,7 @@ struct OnHeartbeatResult
   double next_last_seen{};
 };
 
-template <class In>
+template<class In>
 inline bool eval_on_heartbeat(
   [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
   [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,

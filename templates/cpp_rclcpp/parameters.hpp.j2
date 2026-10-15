@@ -5,6 +5,7 @@
 // (SPEC-07 section 3.1).
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
@@ -26,6 +27,7 @@ class {{ cls }}Parameters {
 
  private:
   rcl_interfaces::msg::SetParametersResult on_set(const std::vector<rclcpp::Parameter> & updates);
+  rcl_interfaces::msg::SetParametersResult reject(const std::string & why);
 
   {{ cls }}Engine & engine_;
   rclcpp::Logger logger_;

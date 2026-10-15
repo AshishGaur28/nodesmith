@@ -33,8 +33,7 @@ ament_target_dependencies(echo_node_component
   rcl_interfaces
   rclcpp
   rclcpp_components
-  std_msgs
-  )
+  std_msgs)
 rclcpp_components_register_nodes(echo_node_component "demo::EchoNode")
 
 add_executable(echo_node src/main.cpp src/app.cpp)

@@ -37,7 +37,7 @@ struct EchoResult
   double out__out_pub__data{};
 };
 
-template <class In>
+template<class In>
 inline bool eval_echo(
   [[maybe_unused]] const In & in, [[maybe_unused]] const Params & params,
   [[maybe_unused]] const State & state, [[maybe_unused]] double now_sec,
@@ -45,7 +45,7 @@ inline bool eval_echo(
 {
   bool fault = false;
 
-  const double v_doubled = (in.data * 2.0);
+  const double v_doubled = in.data * 2.0;
 
   r2d::check_finite(v_doubled, fault);
   if (fault) {

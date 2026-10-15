@@ -13,7 +13,20 @@ requires-python = ">=3.11"
 dependencies = ["jsonschema>=4.18", "pyyaml>=6", "jinja2>=3.1", "clang-format==18.1.8"]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = [
+  "pytest",
+  "ruff",
+  # The ROS 2 Python lint (ament_flake8) is reproduced by the generated-launch-file test.
+  "flake8",
+  "flake8-quotes",
+  "flake8-import-order",
+  "flake8-builtins",
+  "flake8-comprehensions",
+  "flake8-docstrings",
+  "flake8-blind-except",
+  "flake8-class-newline",
+  "flake8-deprecated",
+]
 
 [project.scripts]
 nodesmith = "nodesmith.cli.main:main"
@@ -28,7 +41,7 @@ pythonpath = ["src", "."]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["tests/golden"]
+extend-exclude = ["tests/golden", "tests/support/ament_lint_cmake"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "B", "UP", "SIM", "D100", "D101", "D102", "D103", "D104"]

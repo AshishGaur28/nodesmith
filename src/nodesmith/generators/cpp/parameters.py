@@ -282,7 +282,9 @@ def update_lines(parameters: list[dict]) -> list[str]:
             lines += [
                 "    bool f = false;",
                 f"    next.{target} = r2d::to_int<std::int32_t>(p.as_int(), f);",
-                f"    if (f) return reject({why});",
+                "    if (f) {",
+                f"      return reject({why});",
+                "    }",
             ]
         elif type_ == "float32":
             lines.append(f"    next.{target} = static_cast<float>(p.as_double());")

@@ -33,7 +33,7 @@ public:
 private:
   void run_boot();
   void run_check_link();
-  void run_on_heartbeat(const std_msgs::msg::Empty & in);
+  void run_on_heartbeat(std_msgs::msg::Empty::ConstSharedPtr message);
 
   rclcpp::Node & node_;
   LinkWatchdogNodeEngine & engine_;

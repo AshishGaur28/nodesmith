@@ -8,6 +8,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "{{ pkg }}/interface_names.hpp"
 #include "{{ pkg }}/pipelines.hpp"
@@ -17,6 +18,12 @@ namespace {{ ns }} {
 
 class {{ cls }}Engine {
  public:
+  // One entry of the diagnostics ring: what happened, and in which pipeline.
+  struct Diagnostic {
+    r2d::Code code;
+    const char * who;
+  };
+
   {{ cls }}Engine() : params_(Params{}) {}
   {{ cls }}Engine(const {{ cls }}Engine &) = delete;
   {{ cls }}Engine & operator=(const {{ cls }}Engine &) = delete;
@@ -29,7 +36,7 @@ class {{ cls }}Engine {
     if (auto why = validate(initial)) {
       return why;
     }
-    params_.publish([&](Params & slot) { slot = initial; });
+    params_.publish(Assign{initial});
     return std::nullopt;
   }
 
@@ -39,7 +46,7 @@ class {{ cls }}Engine {
     if (auto why = validate(next)) {
       return why;
     }
-    if (!params_.publish([&](Params & slot) { slot = next; })) {
+    if (!params_.publish(Assign{next})) {
       return std::string("parameter store busy, retry");
     }
     return std::nullopt;
@@ -59,9 +66,11 @@ class {{ cls }}Engine {
 
   void report(r2d::Code code, const char * who) noexcept { diag_.report(code, who); }
 
-  template <class Emit>
-  void drain_diagnostics(Emit && emit) {
-    diag_.drain(emit);
+  // Removes and returns what was reported since the last call, oldest first.
+  std::vector<Diagnostic> take_diagnostics() {
+    std::vector<Diagnostic> taken;
+    diag_.drain(Collect{taken});
+    return taken;
   }
 
   // ---- pipelines ------------------------------------------------------------------------------
@@ -71,6 +80,18 @@ class {{ cls }}Engine {
 {{ methods }}
 
  private:
+  // Copies a value into the parameter slot that `publish` hands out.
+  struct Assign {
+    const Params & value;
+    void operator()(Params & slot) const { slot = value; }
+  };
+
+  // Receives the entries of the diagnostics ring.
+  struct Collect {
+    std::vector<Diagnostic> & into;
+    void operator()(r2d::Code code, const char * who) const { into.push_back({code, who}); }
+  };
+
   // One slot per thread ({{ threads }}), the current one and a free one (SPEC-12 section 5).
   r2d::SnapshotRing<Params, {{ n_ring }}> params_;
 

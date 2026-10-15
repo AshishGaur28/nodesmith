@@ -10,13 +10,13 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    share = get_package_share_directory("link_watchdog_node")
-    params = os.path.join(share, "config", "link_watchdog_node.params.yaml")
+    share = get_package_share_directory('link_watchdog_node')
+    params = os.path.join(share, 'config', 'link_watchdog_node.params.yaml')
 
     node = Node(
-        package="link_watchdog_node",
-        executable="link_watchdog_node",
-        output="screen",
+        package='link_watchdog_node',
+        executable='link_watchdog_node',
+        output='screen',
         parameters=[params],
     )
     return LaunchDescription([node])

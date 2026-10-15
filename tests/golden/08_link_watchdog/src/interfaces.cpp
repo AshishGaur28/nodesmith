@@ -3,6 +3,7 @@
 #include "link_watchdog_node/interfaces.hpp"
 
 #include <chrono>
+#include <functional>
 
 namespace monitoring
 {
@@ -12,7 +13,10 @@ namespace
 
 using Seconds = std::chrono::duration<double>;
 
-double steady_now() { return Seconds(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+double steady_now()
+{
+  return Seconds(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 }  // namespace
 
@@ -20,7 +24,8 @@ double steady_now() { return Seconds(std::chrono::steady_clock::now().time_since
 // picked up with the node (`automatically_add_to_executor_with_node` defaults to true).
 LinkWatchdogNodeInterfaces::LinkWatchdogNodeInterfaces(
   rclcpp::Node & node, LinkWatchdogNodeEngine & engine)
-: node_(node), engine_(engine)
+: node_(node),
+  engine_(engine)
 {
   group_state_domain_1_ = node_.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -33,16 +38,19 @@ LinkWatchdogNodeInterfaces::LinkWatchdogNodeInterfaces(
 
   timer_check_link_ = binding::create_timer(
     node_, clock_steady_, std::chrono::milliseconds(names::kPeriodMsCheckLink),
-    [this]() { run_check_link(); }, group_state_domain_1_);
+    std::bind(&LinkWatchdogNodeInterfaces::run_check_link, this), group_state_domain_1_);
 
   sub_heartbeat_sub_on_heartbeat_ = binding::create_subscription<std_msgs::msg::Empty>(
     node_, names::kSubTopicHeartbeatSub,
     rclcpp::QoS(names::kSubQosDepthHeartbeatSub).reliable().durability_volatile(),
-    [this](std_msgs::msg::Empty::ConstSharedPtr msg) { run_on_heartbeat(*msg); },
+    std::bind(&LinkWatchdogNodeInterfaces::run_on_heartbeat, this, std::placeholders::_1),
     group_state_domain_1_);
 }
 
-void LinkWatchdogNodeInterfaces::start() { run_boot(); }
+void LinkWatchdogNodeInterfaces::start()
+{
+  run_boot();
+}
 
 void LinkWatchdogNodeInterfaces::run_boot()
 {
@@ -97,8 +105,10 @@ void LinkWatchdogNodeInterfaces::run_check_link()
   }
 }
 
-void LinkWatchdogNodeInterfaces::run_on_heartbeat(const std_msgs::msg::Empty & in)
+void LinkWatchdogNodeInterfaces::run_on_heartbeat(std_msgs::msg::Empty::ConstSharedPtr message)
 {
+  const auto & in = *message;
+
   const auto run = engine_.enter();
   if (!run) {
     return;
